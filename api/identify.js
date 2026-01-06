@@ -1,17 +1,10 @@
-
 import jpeg from 'jpeg-js';
 import { bmvbhash } from 'blockhash-core';
 import { redis } from './_services/redis.js';
 import { resolveComicMetadata } from './_services/metadataService.js';
 
 export const config = {
-    runtime: 'edge', // or 'nodejs' if jpeg-js is too slow, but jpeg-js is pure JS so Edge might work (ignoring timeout)
-};
-
-const hex = (buffer) => {
-    return Array.from(new Uint8Array(buffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
+    runtime: 'edge', 
 };
 
 export default async function handler(req) {
@@ -21,55 +14,50 @@ export default async function handler(req) {
 
     try {
         const formData = await req.formData();
-        const file = formData.get('image'); // Expecting 'image' field
+        const file = formData.get('image');
 
         if (!file) {
             return new Response('No image uploaded', { status: 400 });
         }
 
-        // 1. Image Processing (Decode & Hash)
         const arrayBuffer = await file.arrayBuffer();
-        const rawData = jpeg.decode(arrayBuffer, { useTArray: true }); // Decode JPG
-
-        // pHash Generation (16 bits)
-        // blockhash-core expects (data, width, height)
-        // Raw data from jpeg-js is RGBA (4 bytes per pixel)
-        // We might need to simplify data for blockhash or pass it directly if supported.
-        // bmvbhash(data, width, height)
+        
+        // 1. Existing Image Hashing (for Hot Cache)
+        const rawData = jpeg.decode(arrayBuffer, { useTArray: true });
         const hash = bmvbhash(rawData.data, rawData.width, rawData.height);
-
-        // 2. Check Redis Cache (Identity Cache)
         const cacheKey = `phash:${hash}`;
         const cachedId = await redis.get(cacheKey);
 
         if (cachedId) {
-            console.log(`Cache HIT for hash ${hash}`);
-            // Fetch metadata for this ID (cached in Supabase or Redis)
-            // For now, assume cachedId is sufficient to lookup metadata
-            // Real implementation would fetch full details.
-            return new Response(JSON.stringify({
-                identified: true,
-                cacheHit: true,
-                comicId: cachedId
-            }), { status: 200 });
+            return new Response(JSON.stringify({ identified: true, cacheHit: true, comicId: cachedId }), { status: 200 });
         }
 
-        // 3. Cache Miss: AI Identification
-        console.log(`Cache MISS for hash ${hash}. Calling AI...`);
+        // 2. Integration: Call Ximilar Comics Identification
+        // Convert arrayBuffer to Base64 for Ximilar
+        const base64Image = Buffer.from(arrayBuffer).toString('base64');
+        
+        const ximilarResponse = await fetch('https://api.ximilar.com/collectibles/v2/comics_id', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Token ${process.env.XIMILAR_TOKEN}`, // Securely pull from Vercel
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                "records": [{ "_base64": base64Image }],
+                "pricing": true // Returns market data automatically
+            })
+        });
 
-        // TODO: Call Gemini API here (Ported from frontend aiScanner.js)
-        // For V1 Demo, we mock the AI result or assume it identifies 'Spawn #1'
-        const aiResult = {
-            title: "Spawn",
-            issue: "1",
-            confidence: 0.98
-        };
+        const ximilarData = await ximilarResponse.json();
+        const identification = ximilarData.records?.[0]?._objects?.[0]?._identification;
 
-        // 4. Resolve Metadata (Canonical)
-        const metadata = await resolveComicMetadata(aiResult.title, aiResult.issue);
+        if (!identification) {
+            return new Response(JSON.stringify({ identified: false, error: 'Could not identify comic' }), { status: 404 });
+        }
 
-        // 5. Cache the Result
-        // Store Hash -> ComicID (24h TTL)
+        // 3. Resolve Metadata and Cache the Result
+        const metadata = await resolveComicMetadata(identification.series, identification.issue_number);
+        
         if (metadata && metadata.comic_vine_id) {
             await redis.set(cacheKey, metadata.comic_vine_id, { ex: 86400 });
         }
@@ -77,7 +65,10 @@ export default async function handler(req) {
         return new Response(JSON.stringify({
             identified: true,
             cacheHit: false,
-            data: metadata || aiResult
+            data: {
+                ...identification,
+                ...metadata
+            }
         }), { status: 200 });
 
     } catch (e) {
