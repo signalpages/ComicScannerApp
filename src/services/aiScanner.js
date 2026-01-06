@@ -1,73 +1,39 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY;
-
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(API_KEY);
-
+/**
+ * Frontend Service to communicate with Vercel Backend
+ */
 export const identifyComic = async (imageBlob) => {
-    if (!API_KEY) {
-        console.warn("Missing Gemini API Key. Returning mock data.");
-        return mockIdentify();
-    }
-
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const formData = new FormData();
+        formData.append('image', imageBlob);
 
-        // Convert blob to base64
-        const base64Data = await blobToBase64(imageBlob);
+        // This calls your Vercel Backend function at /api/identify
+        const response = await fetch('/api/identify', {
+            method: 'POST',
+            body: formData,
+        });
 
-        const prompt = "Identify this comic book. Return a JSON object with strictly these fields: 'title', 'issue_number', 'publisher', 'year' (estimate), 'is_variant' (boolean), 'variant_name' (if applicable), 'condition_estimate' (string like 'VF', 'NM'). Do not use markdown backticks in response.";
-
-        const imagePart = {
-            inlineData: {
-                data: base64Data,
-                mimeType: "image/jpeg",
-            },
-        };
-
-        const result = await model.generateContent([prompt, imagePart]);
-        const response = await result.response;
-        const text = response.text();
-
-        // Attempt to parse JSON
-        try {
-            const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(cleanedText);
-        } catch (e) {
-            console.error("Failed to parse Gemini response:", text);
-            return { error: "Failed to parse comic data" };
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Server Error (${response.status}): ${errorText}`);
         }
+
+        const result = await response.json();
+
+        // Map the backend data to the fields your App.jsx expects
+        // This ensures the UI updates with real AI data
+        return {
+            title: result.data?.series || "Unknown Title",
+            issue_number: result.data?.issue_number || "??",
+            publisher: result.data?.publisher || "Unknown",
+            year: result.data?.year || "N/A",
+            is_variant: result.data?.is_variant || false,
+            variant_name: result.data?.variant_name || null,
+            condition_estimate: "AI Calculated"
+        };
+        
     } catch (error) {
-        console.error("Gemini Scan Error:", error);
+        console.error("Scan Error:", error);
+        // We throw the error instead of returning Spider-Man so you know if it fails
         throw error;
     }
-};
-
-const blobToBase64 = (blob) => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64String = reader.result.split(',')[1]; // Remove data url prefix
-            resolve(base64String);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
-};
-
-const mockIdentify = () => {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            resolve({
-                title: "Amazing Spider-Man",
-                issue_number: "300",
-                publisher: "Marvel",
-                year: "1988",
-                is_variant: false,
-                variant_name: null,
-                condition_estimate: "NM"
-            });
-        }, 2000);
-    });
 };
