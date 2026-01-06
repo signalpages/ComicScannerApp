@@ -2,28 +2,34 @@ import jpeg from 'jpeg-js';
 import { bmvbhash } from 'blockhash-core';
 import { redis } from './_services/redis.js';
 import { resolveComicMetadata } from './_services/metadataService.js';
-import { Buffer } from 'node:buffer'; 
+import formidable from 'formidable';
+import fs from 'fs/promises';
 
 export const config = {
-    runtime: 'nodejs', // REQUIRED for heavy image processing
+    api: {
+        bodyParser: false, // Disabling bodyParser is required for formidable
+    },
 };
 
-export default async function handler(req) {
+export default async function handler(req, res) {
     console.log("!!! API HIT DETECTED !!!");
-    if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
+    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+
+    const form = formidable({});
 
     try {
-        const formData = await req.formData();
-        const file = formData.get('image');
-        const arrayBuffer = await file.arrayBuffer();
+        // 1. Parse the Incoming File
+        const [fields, files] = await form.parse(req);
+        const file = files.image[0];
+        const imageBuffer = await fs.readFile(file.filepath);
         
-        // 1. Image Hashing (Skipping cache for now to ensure fresh results)
-        const rawData = jpeg.decode(arrayBuffer, { useTArray: true });
+        // 2. Image Hashing
+        const rawData = jpeg.decode(imageBuffer, { useTArray: true });
         const hash = bmvbhash(rawData.data, rawData.width, rawData.height);
-        console.log(`Processing Image Hash: ${hash}`);
+        console.log(`Processing Hash: ${hash}`);
 
-        // 2. LIVE AI Identification
-        const base64Image = Buffer.from(arrayBuffer).toString('base64');
+        // 3. AI Identification (Ximilar)
+        const base64Image = imageBuffer.toString('base64');
         const ximilarResponse = await fetch('https://api.ximilar.com/collectibles/v2/comics_id', {
             method: 'POST',
             headers: {
@@ -38,27 +44,22 @@ export default async function handler(req) {
 
         const ximilarData = await ximilarResponse.json();
         const identification = ximilarData.records?.[0]?._objects?.[0]?._identification;
-        
-        console.log("AI IDENTIFICATION RESULT:", JSON.stringify(identification));
+        console.log("AI RESULT:", JSON.stringify(identification));
 
         if (!identification) {
-            return new Response(JSON.stringify({ identified: false, error: 'AI failed to identify cover' }), { status: 404 });
+            return res.status(404).json({ identified: false, error: 'AI failed to identify' });
         }
 
-        // 3. Resolve Metadata
+        // 4. Resolve Metadata
         const metadata = await resolveComicMetadata(identification.series, identification.issue_number);
-        console.log("METADATA RESOLVED:", JSON.stringify(metadata));
-
-        return new Response(JSON.stringify({
+        
+        return res.status(200).json({
             identified: true,
             data: { ...identification, ...metadata }
-        }), { 
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
         });
 
     } catch (e) {
         console.error("CRITICAL API ERROR:", e.message);
-        return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+        return res.status(500).json({ error: e.message });
     }
 }
