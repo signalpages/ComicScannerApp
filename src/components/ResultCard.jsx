@@ -42,7 +42,7 @@ const ResultCard = ({ data, onRescan }) => {
 
   const activeImage =
     getProxyUrl(selectedVariant?.image) ||
-    scanImage ||
+    getProxyUrl(scanImage) ||
     getProxyUrl(pricingData.cover_image) ||
     "/default_cover.png";
 
