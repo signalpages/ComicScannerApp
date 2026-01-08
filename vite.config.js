@@ -16,6 +16,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      manifestFilename: 'manifest.json',
       manifest: {
         name: 'Comic Scanner AI',
         short_name: 'ComicScan',

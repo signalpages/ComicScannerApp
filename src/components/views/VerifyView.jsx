@@ -2,6 +2,12 @@
 import React from 'react';
 
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
+    const getProxyUrl = (url) => {
+        if (!url) return null;
+        if (url.startsWith('data:') || url.startsWith('/')) return url;
+        return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    };
+
     return (
         <div className="h-full flex flex-col bg-midnight-950 p-4">
             <h2 className="text-xl font-bold text-white mb-4 text-center">Verify Match</h2>
@@ -23,7 +29,7 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                         onClick={() => onSelect(cand)}
                         className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
                     >
-                        <img src={cand.coverUrl} className="w-16 h-24 object-cover rounded bg-gray-800" alt="Cover" />
+                        <img src={getProxyUrl(cand.coverUrl)} className="w-16 h-24 object-cover rounded bg-gray-800" alt="Cover" />
                         <div className="flex-1">
                             <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
                             <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>

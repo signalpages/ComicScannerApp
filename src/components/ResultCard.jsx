@@ -13,6 +13,12 @@ const ResultCard = ({ data, onRescan }) => {
 
   const { aiData = {}, pricingData = {}, scanImage } = data;
 
+  const getProxyUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('data:') || url.startsWith('/')) return url;
+    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+  };
+
   const [selectedVariant, setSelectedVariant] = useState(null);
 
   const issueNum = sanitizeIssue(aiData.issue_number);
@@ -20,9 +26,9 @@ const ResultCard = ({ data, onRescan }) => {
   const activePricing = selectedVariant || pricingData;
 
   const activeImage =
-    selectedVariant?.image ||
+    getProxyUrl(selectedVariant?.image) ||
     scanImage ||
-    pricingData.cover_image ||
+    getProxyUrl(pricingData.cover_image) ||
     "/default_cover.png";
 
   const ebayQuery = [
@@ -50,11 +56,10 @@ const ResultCard = ({ data, onRescan }) => {
               {/* Original Scan */}
               <div
                 onClick={() => setSelectedVariant(null)}
-                className={`flex-shrink-0 w-24 h-36 relative rounded-xl overflow-hidden cursor-pointer border-2 ${
-                  !selectedVariant
-                    ? "border-neon-blue shadow-neon"
-                    : "border-transparent opacity-70"
-                }`}
+                className={`flex-shrink-0 w-24 h-36 relative rounded-xl overflow-hidden cursor-pointer border-2 ${!selectedVariant
+                  ? "border-neon-blue shadow-neon"
+                  : "border-transparent opacity-70"
+                  }`}
               >
                 <img
                   src={scanImage || "/default_cover.png"}
@@ -70,14 +75,13 @@ const ResultCard = ({ data, onRescan }) => {
                 <div
                   key={idx}
                   onClick={() => setSelectedVariant(variant)}
-                  className={`flex-shrink-0 w-24 h-36 relative rounded-xl overflow-hidden cursor-pointer border-2 ${
-                    selectedVariant === variant
-                      ? "border-neon-purple"
-                      : "border-transparent opacity-70"
-                  }`}
+                  className={`flex-shrink-0 w-24 h-36 relative rounded-xl overflow-hidden cursor-pointer border-2 ${selectedVariant === variant
+                    ? "border-neon-purple"
+                    : "border-transparent opacity-70"
+                    }`}
                 >
                   <img
-                    src={variant.image || "/default_cover.png"}
+                    src={getProxyUrl(variant.image) || "/default_cover.png"}
                     className="w-full h-full object-cover"
                     alt={variant.name}
                   />
@@ -137,7 +141,7 @@ const ResultCard = ({ data, onRescan }) => {
           <div className="text-3xl text-neon-purple font-bold">
             {formatPrice(
               activePricing?.values?.cgc_9_8 ??
-                activePricing?.price_graded
+              activePricing?.price_graded
             )}
           </div>
         </div>
