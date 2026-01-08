@@ -5,6 +5,7 @@ import ResultCard from "./components/ResultCard";
 import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
+import { IAP } from "./services/iapBridge";
 
 function App() {
   const {
@@ -141,10 +142,10 @@ function App() {
       {renderContent()}
 
       {/* Global Error Toast */}
-      {error && (
+      {error && error !== 'SCAN_LIMIT_REACHED' && (
         <div className="fixed top-6 left-6 right-6 bg-red-500 text-white p-4 rounded-xl shadow-xl z-[100] flex justify-between items-center animate-slide-down">
           <span className="font-bold text-sm">{error}</span>
-          <button onClick={actions.resetFlow} className="bg-white/20 px-3 py-1 rounded text-xs font-bold">CLOSE</button>
+          <button onClick={actions.clearError} className="bg-white/20 px-3 py-1 rounded text-xs font-bold">CLOSE</button>
         </div>
       )}
     </Layout>

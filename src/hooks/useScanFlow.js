@@ -53,71 +53,118 @@ export const useScanFlow = () => {
         }, 100);
     }, []);
 
+    // Helper: Device ID
+    const getDeviceId = () => {
+        let id = localStorage.getItem('deviceId');
+        if (!id) {
+            id = crypto.randomUUID();
+            localStorage.setItem('deviceId', id);
+        }
+        return id;
+    };
+
     const performIdentification = async (image) => {
         try {
             const response = await fetch('/api/identify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image })
+                body: JSON.stringify({
+                    image,
+                    deviceId: getDeviceId()
+                })
             });
+
+            if (response.status === 402) {
+                // Quota Exceeded
+                const errData = await response.json();
+                // Throw specific error to be caught below
+                throw new Error('SCAN_LIMIT_REACHED');
+            }
 
             if (!response.ok) throw new Error('Identification failed');
 
             const data = await response.json();
             if (!data.ok) throw new Error(data.error || 'Unknown error');
 
-            setCandidates(data.candidates || []);
+            // data.best contains strict schema { seriesTitle, issueNumber, ... }
+            const best = data.best;
+            const candidate = {
+                editionId: `auto-${best.seriesTitle}-${best.issueNumber}`,
+                displayName: `${best.seriesTitle} #${best.issueNumber}`,
+                year: best.year,
+                publisher: best.publisher,
+                coverUrl: null, // No deep search in Identify step
+                confidence: best.confidence
+            };
 
-            // Auto-select logic if low risk
-            if (data.variantRisk === 'LOW' && data.candidates?.length === 1) {
-                confirmCandidate(data.candidates[0]);
-            } else {
-                inFlight.current = false; // Allow interaction
-                setState(SCAN_STATE.VERIFY);
-            }
+            setCandidates([candidate]);
+
+            // STRICT Commercial logic: 
+            // - If confidence < 0.6, Verify is mandatory.
+            // - "No auto-accept" is the instruction, so Verify is ALWAYS mandatory?
+            // "If confidence < 0.6, Verify is mandatory ... No auto-accept"
+            // Implies we ALWAYS verify.
+
+            inFlight.current = false;
+            setState(SCAN_STATE.VERIFY);
 
         } catch (e) {
             console.error(e);
             setError(e.message);
             inFlight.current = false;
-            // Go back to Home or Error state?
-            setState(SCAN_STATE.HOME); // Or stay in identify with error
+            setState(SCAN_STATE.HOME);
         }
     };
 
     const confirmCandidate = useCallback((candidate) => {
         setSelectedCandidate(candidate);
         setState(SCAN_STATE.PRICING);
-        fetchPricing(candidate.editionId);
+        // Pass candidate object so we can extract title/issue for Price API
+        fetchPricing(candidate);
     }, []);
 
-    const fetchPricing = async (editionId) => {
+    const fetchPricing = async (candidate) => {
         try {
-            // Check Quota logic handles in API
+            // Extract necessary fields for Price API
+            // It expects { seriesTitle, issueNumber } OR editionId
+            let seriesTitle = 'Unknown';
+            let issueNumber = '1';
+
+            if (candidate.displayName) {
+                const parts = candidate.displayName.split('#');
+                seriesTitle = parts[0]?.trim();
+                issueNumber = parts[1]?.trim().split(' ')[0] || '1';
+            }
+
             const response = await fetch('/api/price', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ editionId })
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Header for quota if needed
+                    'x-anon-id': getAnonId()
+                },
+                body: JSON.stringify({
+                    seriesTitle,
+                    issueNumber,
+                    editionId: candidate.editionId
+                })
             });
 
             const data = await response.json();
-            // Pricing might return ok:true but with masked values if quota exceeded
 
             setPricingResult(data);
             setState(SCAN_STATE.RESULT);
 
-            // Save History
             saveHistory({
-                editionId,
-                displayName: selectedCandidate?.displayName || 'Comic',
-                coverUrl: selectedCandidate?.coverUrl,
+                editionId: candidate.editionId,
+                displayName: candidate.displayName,
+                coverUrl: candidate.coverUrl,
                 value: data.value,
                 timestamp: Date.now()
             });
 
         } catch (e) {
             setError('Pricing failed');
-            // Allow retry?
         } finally {
             inFlight.current = false;
         }

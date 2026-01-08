@@ -1,80 +1,74 @@
 
-import { filterAndSort } from '../_utils/ranker.js';
+import { getEbayToken } from './ebayToken.js';
 
-const EBAY_APP_ID = process.env.EBAY_APP_ID;
+const calculatePercentiles = (prices) => {
+    if (!prices || prices.length === 0) return { poor: 0, typical: 0, nearMint: 0 };
 
-const calculateTrimmedMedian = (prices) => {
-    if (!prices || prices.length === 0) return 0;
-    if (prices.length < 5) {
-        // Not enough data to trim, just average
-        return prices.reduce((a, b) => a + b, 0) / prices.length;
-    }
-
+    // Sort
     const sorted = [...prices].sort((a, b) => a - b);
-    const trimCount = Math.floor(sorted.length * 0.1); // Trim 10% from each end
+    const n = sorted.length;
 
-    const trimmed = sorted.slice(trimCount, sorted.length - trimCount);
-    if (trimmed.length === 0) return 0; // Should not happen given <5 check
+    // Helper to get value at percentile
+    const getP = (p) => {
+        const index = Math.floor((n - 1) * p);
+        return sorted[index];
+    };
 
-    const sum = trimmed.reduce((a, b) => a + b, 0);
-    return sum / trimmed.length;
+    return {
+        poor: getP(0.25),
+        typical: getP(0.50),
+        nearMint: getP(0.75)
+    };
 };
 
-export const getEbayMarketPrice = async (title, issue) => {
-    if (!EBAY_APP_ID) {
-        console.warn("Missing EBAY_APP_ID, returning mock price");
-        return { raw: Math.floor(Math.random() * 50) + 10, source: 'mock' };
-    }
-
+export const getEbayMarketPrice = async (query) => {
     try {
-        const query = `${title} ${issue} -cgc -cbcs -lot -set`;
-        const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(query)}&category_ids=63&limit=50&filter=buyingOptions:{FIXED_PRICE|AUCTION}`;
+        const token = await getEbayToken();
 
-        // Note: eBay OAuth is complex. Browse API requires Application Access Token.
-        // For 'Edge' simplicity, we assume we have a way to get the token or simple API key use if legacy.
-        // Browse API strictly requires OAuth Bearer token.
-        // Getting a token on every request is expensive. Ideally, token is cached in Redis!
+        // Search Active Listings
+        // exclude lots, tpb, etc.
+        // "Active" listings on eBay Browse API usually implies no specific filter for "COMPLETED"
+        // so standard search returns active.
+        const q = `${query} -lot -set -tpb -hardcover -facsimile -reprint`;
 
-        // Placeholder for Token Retrieval (would typically call internal auth service or Redis)
-        const token = "PLACEHOLDER_TOKEN"; // TODO: Implement OAuth Flow or assume valid token passed in env?
+        const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(q)}&limit=100&sort=price`;
 
-        // REALITY CHECK: Generating eBay OAuth token on Edge for every request is slow.
-        // We will assume for this "V1" that we are using a simplified key or existing token logic, 
-        // OR we fail gracefully.
-
-        // For the sake of this prompt, lets Write the FETCH but handle the failure.
-
-        const response = await fetch(url, {
+        const resp = await fetch(url, {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
             }
         });
 
-        if (!response.ok) {
-            console.error("eBay API Error", response.status);
-            return { raw: 0, source: 'error' };
-        }
+        if (!resp.ok) throw new Error("eBay Search Failed");
 
-        const data = await response.json();
+        const data = await resp.json();
         const items = data.itemSummaries || [];
 
-        // Rank and Filter
-        const rankedItems = filterAndSort(items, title, issue);
+        // Filter outliers (simple price sanity check, e.g. > $1)
+        const validItems = items.filter(i => {
+            const val = parseFloat(i.price.value);
+            return val > 1 && i.buyingOptions.includes('FIXED_PRICE'); // Prefer BIN for "Active" market check? Or mixed?
+            // "Active listings" implies current asking prices.
+        });
 
-        // Extract Prices
-        const prices = rankedItems.map(i => parseFloat(i.price.value));
+        const prices = validItems.map(i => parseFloat(i.price.value));
 
-        const estimatedValue = calculateTrimmedMedian(prices);
+        const values = calculatePercentiles(prices);
 
         return {
-            raw: Math.round(estimatedValue),
-            sampleSize: prices.length,
-            source: 'ebay'
+            source: "ebay_browse_active_listings",
+            coverUrl: items[0]?.image?.imageUrl || null, // Fallback image
+            firstItemId: items[0]?.itemId || null, // Useful for linking
+            value: {
+                ...values,
+                currency: "USD"
+            },
+            compsCount: prices.length
         };
 
     } catch (e) {
-        console.error("eBay Service Exception", e);
-        return { raw: 0, source: 'exception' };
+        console.error("eBay Service Error", e);
+        return { source: "error", value: { poor: 0, typical: 0, nearMint: 0, currency: "USD" }, compsCount: 0 };
     }
 };

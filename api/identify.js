@@ -1,5 +1,4 @@
-
-import { resolveComicMetadata } from './_services/metadataService.js';
+import { redis } from './_services/redis.js';
 
 export const config = {
   api: {
@@ -26,78 +25,135 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: 'No image data provided' });
     }
 
-    // 1. OpenAI Vision Identification
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("Missing OPENAI_API_KEY");
-      // Fallback for demo without key
-      return res.status(200).json({
-        ok: true,
-        best: { title: "Unidentified (Missing Key)", issue: "#0", confidence: 0 },
-        candidates: [],
-        variantRisk: "LOW"
-      });
+    // --- QUOTA LOGIC START ---
+    const deviceId = body.deviceId;
+    if (!deviceId) {
+      return res.status(400).json({ ok: false, error: "missing_device_id" });
     }
 
-    const aiResp = await fetch("https://api.openai.com/v1/chat/completions", {
+    if (process.env.UPSTASH_REDIS_REST_URL) {
+      // 1. Check Entitlement
+      const entitlementKey = `entitlement:${deviceId}`;
+      const entitlementRaw = await redis.get(entitlementKey);
+      let isEntitled = false;
+
+      if (entitlementRaw) {
+        try {
+          const ent = (typeof entitlementRaw === 'string') ? JSON.parse(entitlementRaw) : entitlementRaw;
+          if (ent.entitled && ent.expiresAt > Date.now()) {
+            isEntitled = true;
+          }
+        } catch (e) { console.error("Entitlement Parse Error", e); }
+      }
+
+      if (!isEntitled) {
+        const date = new Date();
+        const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
+        const redisKey = `scan:${deviceId}:${monthKey}`;
+
+        const used = await redis.get(redisKey);
+        if ((parseInt(used) || 0) >= 5) {
+          return res.status(402).json({
+            ok: false,
+            code: "SCAN_LIMIT_REACHED",
+            limit: 5,
+            reset: "monthly"
+          });
+        }
+      }
+    }
+    // --- QUOTA LOGIC END ---
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ ok: false, error: "Missing OPENAI_API_KEY" });
+    }
+
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o", // Use high quality model
         messages: [
+          {
+            role: "system",
+            content: `You are identifying a photographed comic book cover.
+
+Extract ONLY what is visible on the cover.
+Do NOT guess issue numbers, years, or variants.
+If information is unclear, return null and lower confidence.
+
+Return valid JSON ONLY with this schema:
+
+{
+  "seriesTitle": string | null,
+  "issueNumber": string | null,
+  "publisher": string | null,
+  "year": number | null,
+  "variantHints": string[],
+  "confidence": number
+}
+
+Rules:
+- issueNumber must be numeric or numeric+suffix (e.g. "36", "1A")
+- confidence is between 0.0 and 1.0`
+          },
           {
             role: "user",
             content: [
-              { type: "text", text: "Identify this comic. Return valid JSON only: { \"title\": \"...\", \"issue\": \"...\", \"publisher\": \"...\", \"year\": \"...\" }" },
               { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Data}` } }
             ]
           }
         ],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
+        temperature: 0.0
       }),
     });
 
-    const aiDataJSON = await aiResp.json();
-    const aiContent = aiDataJSON.choices?.[0]?.message?.content;
+    if (!response.ok) {
+      const err = await response.text();
+      console.error("OpenAI Error", err);
+      return res.status(502).json({ ok: false, error: "AI Provider Error" });
+    }
+
+    const aiDataJSON = await response.json();
+    const content = aiDataJSON.choices?.[0]?.message?.content;
     let aiResult = {};
 
     try {
-      aiResult = JSON.parse(aiContent);
+      aiResult = JSON.parse(content);
     } catch (e) {
-      console.error("AI JSON Parse Error", e);
-      aiResult = { title: "Unknown", issue: "?" };
+      return res.status(500).json({ ok: false, error: "Invalid JSON from AI" });
     }
 
-    // 2. Resolve Candidates (Mock or Real via MetadataService)
-    // For now, allow Search logic to handle "candidates" based on AI title
-    // In a real flow, we'd search Metron here.
+    // Determine Variant Risk
+    let variantRisk = "LOW";
+    if (aiResult.variantHints && aiResult.variantHints.length > 0) variantRisk = "HIGH";
+    if (aiResult.confidence < 0.6) variantRisk = "HIGH";
 
-    // Simulating Metron/CV Candidates
-    const candidates = [
-      {
-        editionId: `cv-${aiResult.title}-${aiResult.issue}-A`,
-        displayName: `${aiResult.title} #${aiResult.issue}`,
-        coverUrl: "https://comicvine.gamespot.com/a/uploads/scale_small/11112/111123579/8679069-spiderman1.jpg", // Placeholder
-        variantHint: "Direct Edition",
-        confidence: 0.9,
-        year: aiResult.year,
-        publisher: aiResult.publisher
-      }
-    ];
+    // --- QUOTA INCREMENT ---
+    if (process.env.UPSTASH_REDIS_REST_URL && req.body.deviceId) {
+      const d = new Date();
+      const mk = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+      const rk = `scan:${req.body.deviceId}:${mk}`;
+      await redis.incr(rk);
+      await redis.expire(rk, 60 * 60 * 24 * 31);
+    }
 
     return res.status(200).json({
       ok: true,
+      provider: "openai",
       best: {
-        title: aiResult.title,
-        issue: aiResult.issue,
-        year: aiResult.year,
+        seriesTitle: aiResult.seriesTitle,
+        issueNumber: aiResult.issueNumber,
         publisher: aiResult.publisher,
-        confidence: 0.9
+        year: aiResult.year,
+        confidence: aiResult.confidence
       },
-      candidates: candidates,
-      variantRisk: "LOW"
+      candidates: [],
+      variantRisk: variantRisk
     });
 
   } catch (e) {

@@ -11,7 +11,7 @@ const ResultCard = ({ data, onRescan }) => {
 
     // Derived values based on selection
     const activePricing = selectedVariant ? selectedVariant : pricingData;
-    const activeImage = selectedVariant ? selectedVariant.image : initialImageUrl;
+    const activeImage = selectedVariant ? selectedVariant.image : (initialImageUrl || pricingData.coverUrl || '/default_cover.png');
     const activeTitle = selectedVariant ? selectedVariant.name : (aiData.condition_estimate || 'Raw');
 
     const showRawDisclaimer = activePricing.price_raw > 20 && !aiData.is_key_issue;
@@ -77,7 +77,7 @@ const ResultCard = ({ data, onRescan }) => {
                 {/* Title Block */}
                 <div className="col-span-2 glass-panel p-5 rounded-3xl flex flex-col justify-center text-center border-l-4 border-l-neon-blue hover:bg-white/5 transition-colors">
                     <h2 className="text-3xl font-display font-bold text-white leading-none mb-1">
-                        {aiData.title} <span className="text-neon-blue">#{aiData.issue_number}</span>
+                        {aiData.title} {aiData.issue_number && aiData.issue_number !== 'N/A' && <span className="text-neon-blue">#{aiData.issue_number}</span>}
                     </h2>
                     <p className="text-gray-400 text-sm font-body font-medium uppercase tracking-wide">
                         {aiData.publisher || pricingData.publisher || 'Unknown'} • {aiData.year || (pricingData.cover_date ? pricingData.cover_date.split('-')[0] : '????')}
@@ -93,7 +93,7 @@ const ResultCard = ({ data, onRescan }) => {
                 <div className="glass-panel p-4 rounded-3xl flex flex-col items-center justify-center relative overflow-hidden active:scale-95 transition-transform duration-200">
                     <span className="text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">Raw Value</span>
                     <span className="text-3xl font-display font-bold text-neon-blue drop-shadow-[0_0_10px_rgba(0,243,255,0.3)]">
-                        {activePricing.values?.raw || (activePricing.price_raw ? `$${activePricing.price_raw} .00` : '$-')}
+                        {activePricing.values?.raw || (activePricing.price_raw ? `$${Math.round(activePricing.price_raw)}` : '$-')}
                     </span>
                     {showRawDisclaimer && (
                         <div className="mt-2 px-2 py-1 bg-white/5 rounded text-[9px] text-center text-gray-300 leading-tight">
@@ -107,7 +107,7 @@ const ResultCard = ({ data, onRescan }) => {
                     <div className="absolute top-0 right-0 w-12 h-12 bg-neon-purple/20 blur-2xl rounded-full" />
                     <span className="text-gray-400 text-[10px] uppercase font-bold tracking-widest mb-1">CGC 9.8</span>
                     <span className="text-3xl font-display font-bold text-neon-purple drop-shadow-[0_0_10px_rgba(188,19,254,0.3)]">
-                        {activePricing.values?.cgc_9_8 || (activePricing.price_graded ? `$${activePricing.price_graded} .00` : '$-')}
+                        {activePricing.values?.cgc_9_8 || (activePricing.price_graded ? `$${Math.round(activePricing.price_graded)}` : '$-')}
                     </span>
                 </div>
 
@@ -120,7 +120,7 @@ const ResultCard = ({ data, onRescan }) => {
                 </button>
 
                 <a
-                    href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(`${aiData.title} ${aiData.issue_number} ${selectedVariant ? selectedVariant.name : ''}`)} -cgc -cbcs&_sop=12`}
+                    href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent([aiData.title, (aiData.issue_number && aiData.issue_number !== 'N/A' ? aiData.issue_number : null), (selectedVariant ? selectedVariant.name : null)].filter(Boolean).join(' '))} -cgc -cbcs&_sop=12`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="glass-panel p-4 rounded-3xl flex flex-col items-center justify-center bg-blue-600/20 hover:bg-blue-600/40 border-blue-500/30 transition-all group cursor-pointer active:scale-95"
