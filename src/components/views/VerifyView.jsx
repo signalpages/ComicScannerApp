@@ -4,8 +4,20 @@ import React from 'react';
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
     const getProxyUrl = (url) => {
         if (!url) return null;
-        if (url.startsWith('data:') || url.startsWith('/')) return url;
-        return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+
+        // allow local assets and data URLs
+        if (url.startsWith("data:")) return url;
+        if (url.startsWith("/")) {
+            const looksLikeImage = /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url);
+            return looksLikeImage ? url : null;
+        }
+
+        // only proxy absolute http(s)
+        if (/^https?:\/\//i.test(url)) {
+            return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+        }
+
+        return null;
     };
 
     return (

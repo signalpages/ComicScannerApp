@@ -11,6 +11,16 @@ export default async function handler(req) {
         return new Response('Missing url param', { status: 400 });
     }
 
+    let u;
+    try {
+        u = new URL(targetUrl);
+    } catch {
+        return new Response("Invalid url", { status: 400 });
+    }
+    if (!["http:", "https:"].includes(u.protocol)) {
+        return new Response("Invalid protocol", { status: 400 });
+    }
+
     try {
         // Fetch the remote image
         const imageRes = await fetch(targetUrl, {

@@ -15,8 +15,23 @@ const ResultCard = ({ data, onRescan }) => {
 
   const getProxyUrl = (url) => {
     if (!url) return null;
-    if (url.startsWith('data:') || url.startsWith('/')) return url;
-    return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+
+    // allow local assets and data URLs
+    if (url.startsWith("data:")) return url;
+    if (url.startsWith("/")) {
+      // local file must actually be an image asset you host
+      // if it's just a filename-ish thing, don't try to load it
+      const looksLikeImage = /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url);
+      return looksLikeImage ? url : null;
+    }
+
+    // only proxy absolute http(s)
+    if (/^https?:\/\//i.test(url)) {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+    }
+
+    // anything else (e.g. "3143431-cm01.jpg") -> treat as missing
+    return null;
   };
 
   const [selectedVariant, setSelectedVariant] = useState(null);
