@@ -88,13 +88,30 @@ export const useScanFlow = () => {
 
             // data.best contains strict schema { seriesTitle, issueNumber, ... }
             const best = data.best;
+            const safeIssue =
+                best.issueNumber !== null &&
+                best.issueNumber !== undefined &&
+                /^\d+$/.test(String(best.issueNumber))
+                    ? String(best.issueNumber)
+                    : null;
+
             const candidate = {
-                editionId: `auto-${best.seriesTitle}-${best.issueNumber}`,
-                displayName: `${best.seriesTitle} #${best.issueNumber}`,
-                year: best.year,
-                publisher: best.publisher,
-                coverUrl: null, // No deep search in Identify step
-                confidence: best.confidence
+            editionId: safeIssue
+                ? `auto-${best.seriesTitle}-${safeIssue}`
+                : `auto-${best.seriesTitle}`,
+
+            seriesTitle: best.seriesTitle,
+            issueNumber: safeIssue,
+
+            displayName: safeIssue
+                ? `${best.seriesTitle} #${safeIssue}`
+                : best.seriesTitle,
+
+            year: best.year || null,
+            publisher: best.publisher || null,
+
+            coverUrl: null, // Identify step does not fetch covers
+            confidence: best.confidence
             };
 
             setCandidates([candidate]);
@@ -116,24 +133,34 @@ export const useScanFlow = () => {
         }
     };
 
-    const confirmCandidate = useCallback((candidate) => {
-        setSelectedCandidate(candidate);
-        setState(SCAN_STATE.PRICING);
-        // Pass candidate object so we can extract title/issue for Price API
-        fetchPricing(candidate);
-    }, []);
+            const confirmCandidate = useCallback((candidate) => {
+                setSelectedCandidate(candidate);
+                setState(SCAN_STATE.PRICING);
+                // Pass candidate object so we can extract title/issue for Price API
+                fetchPricing(candidate);
+            }, []);
 
-    const fetchPricing = async (candidate) => {
-        try {
+            const fetchPricing = async (candidate) => {
+                try {
             // Extract necessary fields for Price API
             // It expects { seriesTitle, issueNumber } OR editionId
-            let seriesTitle = 'Unknown';
-            let issueNumber = '1';
+            const seriesTitle = candidate.seriesTitle || candidate.displayName;
+            const issueNumber =
+            candidate.issueNumber && /^\d+$/.test(candidate.issueNumber)
+                ? candidate.issueNumber
+                : null;
 
-            if (candidate.displayName) {
-                const parts = candidate.displayName.split('#');
-                seriesTitle = parts[0]?.trim();
-                issueNumber = parts[1]?.trim().split(' ')[0] || '1';
+            body: JSON.stringify({
+                seriesTitle,
+                issueNumber,
+                editionId: candidate.editionId
+                })
+
+            // REQUIRED GUARD: Missing Title
+            if (!seriesTitle || seriesTitle === 'Unknown') {
+                setError('Could not identify title. Try Manual Search.');
+                setState(SCAN_STATE.VERIFY); // Allow recovery
+                return;
             }
 
             const response = await fetch('/api/price', {
@@ -164,7 +191,9 @@ export const useScanFlow = () => {
             });
 
         } catch (e) {
-            setError('Pricing failed');
+            console.error(e);
+            setError('Pricing failed. Please try again.');
+            setState(SCAN_STATE.VERIFY); // REQUIRED: Unblock user
         } finally {
             inFlight.current = false;
         }

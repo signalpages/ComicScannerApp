@@ -64,8 +64,8 @@ function App() {
           <ResultCard
             data={{ // Mapping new data shape to old ResultCard props for minimal refactor
               aiData: {
-                title: selectedCandidate?.displayName || 'Unknown',
-                issue_number: 'N/A', // Display name often encapsulates this
+                title: selectedCandidate?.seriesTitle || selectedCandidate?.displayName || 'Unknown',
+                issue_number: selectedCandidate?.issueNumber || null,
                 year: selectedCandidate?.year,
                 publisher: selectedCandidate?.publisher
               },
@@ -77,7 +77,7 @@ function App() {
                 publisher: selectedCandidate?.publisher,
                 cover_date: selectedCandidate?.year
               },
-              imageBlob: null // We use coverUrl mainly now
+              scanImage: capturedImage // Pass base64 capture directly
             }}
             onRescan={actions.startCamera}
           />
