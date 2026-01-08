@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "app.vercel.comic_scanner_app_three.twa",
+    "sha256_cert_fingerprints": ["P10:E9:20:91:C2:70:AB:95:8D:91:4B:AC:02:32:08:0C:3B:AC:E5:0D:5F:05:93:B4:A5:FF:BD:C1:B8:00:6E:D6"]
+  }
+}]
