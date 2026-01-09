@@ -1,5 +1,5 @@
-
 import { useState, useRef, useCallback } from 'react';
+import { getDeviceId } from '../lib/deviceId';
 
 // Explicit States
 export const SCAN_STATE = {
@@ -53,24 +53,15 @@ export const useScanFlow = () => {
         }, 100);
     }, []);
 
-    // Helper: Device ID
-    const getDeviceId = () => {
-        let id = localStorage.getItem('deviceId');
-        if (!id) {
-            id = crypto.randomUUID();
-            localStorage.setItem('deviceId', id);
-        }
-        return id;
-    };
-
     const performIdentification = async (image) => {
         try {
+            const deviceId = getDeviceId();
             const response = await fetch('/api/identify', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     image,
-                    deviceId: getDeviceId()
+                    deviceId
                 })
             });
 
@@ -150,11 +141,7 @@ export const useScanFlow = () => {
                     ? candidate.issueNumber
                     : null;
 
-            body: JSON.stringify({
-                seriesTitle,
-                issueNumber,
-                editionId: candidate.editionId
-            })
+            const deviceId = getDeviceId();
 
             // REQUIRED GUARD: Missing Title
             if (!seriesTitle || seriesTitle === 'Unknown') {
@@ -167,13 +154,13 @@ export const useScanFlow = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // Header for quota if needed
-                    'x-anon-id': getDeviceId()
                 },
                 body: JSON.stringify({
                     seriesTitle,
                     issueNumber,
-                    editionId: candidate.editionId
+                    editionId: candidate.editionId,
+                    deviceId, // Added deviceId to body
+                    device_id: deviceId // Adding snake_case backup just in case
                 })
             });
 
