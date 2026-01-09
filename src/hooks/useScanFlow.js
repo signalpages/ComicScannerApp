@@ -2,7 +2,6 @@ import { useState, useRef, useCallback } from "react";
 import { apiFetch } from "../lib/apiFetch";
 import { getDeviceId } from "../lib/deviceId";
 
-// If you already have this enum elsewhere, keep yours and delete this.
 export const SCAN_STATE = {
   HOME: "HOME",
   CAMERA: "CAMERA",
@@ -22,8 +21,12 @@ export function useScanFlow() {
 
   const inFlight = useRef(false);
 
+  // ✅ NEW: capture-level guard to prevent double-trigger (touch + click, etc.)
+  const captureLockRef = useRef(false);
+  const lastCaptureTsRef = useRef(0);
+
   // -------------------------
-  // History helpers (define BEFORE use)
+  // History helpers
   // -------------------------
   const saveHistory = useCallback((item) => {
     try {
@@ -46,11 +49,14 @@ export function useScanFlow() {
     setPricingResult(null);
     setState(SCAN_STATE.HOME);
     inFlight.current = false;
+
+    // ✅ also clear capture guard
+    captureLockRef.current = false;
+    lastCaptureTsRef.current = 0;
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
 
-  // TODO: wire your real camera start/capture
   const startCamera = useCallback(() => {
     clearError();
     setState(SCAN_STATE.CAMERA);
@@ -59,57 +65,72 @@ export function useScanFlow() {
   // -------------------------
   // Identification → Candidates
   // -------------------------
-  const performIdentification = useCallback(
-    async (image) => {
-      console.log('performIdentification: calling API with image length', image?.length);
-      if (inFlight.current) {
-        console.log('performIdentification: skipped (inFlight)');
-        return;
+  const performIdentification = useCallback(async (image) => {
+    console.log("performIdentification: calling API with image length", image?.length);
+
+    if (inFlight.current) {
+      console.log("performIdentification: skipped (inFlight)");
+      return;
+    }
+
+    inFlight.current = true;
+    setError(null);
+
+    try {
+      const resp = await apiFetch("/api/identify", {
+        method: "POST",
+        body: { image },
+        headers: { "x-anon-id": getDeviceId() },
+      });
+
+      const data = await resp.json();
+      console.log("performIdentification: candidates received", data.candidates?.length);
+
+      if (!data?.ok) {
+        throw new Error(data?.error || "Identification failed");
       }
-      inFlight.current = true;
-      setError(null);
 
-      try {
-        const resp = await apiFetch("/api/identify", {
-          method: "POST",
-          // apiFetch will inject { device_id, ... }
-          body: { image },
-          // If your backend uses this for quotas, keep it:
-          headers: { "x-anon-id": getDeviceId() },
-        });
+      setCandidates(data.candidates || []);
+      setSelectedCandidate(null);
+      setPricingResult(null);
+      setState(SCAN_STATE.VERIFY);
+    } catch (e) {
+      console.error("performIdentification error", e);
+      setError(e?.message || "Identification failed. Please try again.");
+      setState(SCAN_STATE.HOME);
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
 
-        const data = await resp.json();
-        console.log('performIdentification: candidates received', data.candidates?.length);
+  // ✅ REPLACE your captureImage with this guarded version
+  const captureImage = useCallback(
+    (base64Image) => {
+      const now = Date.now();
 
-        if (!data?.ok) {
-          throw new Error(data?.error || "Identification failed");
-        }
+      // hard stop: double event (touch + click), accidental double tap, etc.
+      if (captureLockRef.current) return;
+      if (now - lastCaptureTsRef.current < 650) return;
 
-        setCandidates(data.candidates || []);
-        setSelectedCandidate(null);
-        setPricingResult(null);
-        // Note: verify state is set in captureImage too, but safe to set again or here logic-wise
-        setState(SCAN_STATE.VERIFY);
-      } catch (e) {
-        console.error('performIdentification error', e);
-        setError(e?.message || "Identification failed. Please try again.");
-        setState(SCAN_STATE.HOME);
-      } finally {
-        inFlight.current = false;
-      }
+      captureLockRef.current = true;
+      lastCaptureTsRef.current = now;
+
+      console.log("captureImage: triggered");
+      clearError();
+
+      setCapturedImage(base64Image);
+      setState(SCAN_STATE.VERIFY);
+
+      // Call identify once
+      performIdentification(base64Image);
+
+      // release lock shortly after to allow next legit capture
+      setTimeout(() => {
+        captureLockRef.current = false;
+      }, 400);
     },
-    []
+    [clearError, performIdentification]
   );
-
-  const captureImage = useCallback((base64Image) => {
-    console.log('captureImage: triggered');
-    clearError();
-    setCapturedImage(base64Image);
-    // Directly trigger identification as requested
-    // Set state to verify to show UI (candidates will populate when ready)
-    setState(SCAN_STATE.VERIFY);
-    performIdentification(base64Image);
-  }, [clearError, performIdentification]);
 
   // -------------------------
   // Candidate → Pricing
@@ -130,23 +151,12 @@ export function useScanFlow() {
 
         const resp = await apiFetch("/api/price", {
           method: "POST",
-          headers: {
-            // preserve existing quota behavior if backend expects it
-            "x-anon-id": getDeviceId(),
-          },
-          // IMPORTANT: pass an object; apiFetch will JSON.stringify and inject device_id
-          body: {
-            seriesTitle,
-            issueNumber,
-            editionId,
-          },
+          headers: { "x-anon-id": getDeviceId() },
+          body: { seriesTitle, issueNumber, editionId },
         });
 
         const data = await resp.json();
-
-        if (!data?.ok) {
-          throw new Error(data?.error || "Pricing failed");
-        }
+        if (!data?.ok) throw new Error(data?.error || "Pricing failed");
 
         setPricingResult(data);
         setState(SCAN_STATE.RESULT);
@@ -154,7 +164,6 @@ export function useScanFlow() {
         saveHistory({
           editionId,
           displayName: candidate.displayName,
-          // Upgrading history cover: Use eBay image if found, else candidate cover, else null
           coverUrl: data.ebay?.imageUrl || candidate.coverUrl || null,
           year: candidate.year ?? null,
           publisher: candidate.publisher ?? null,
@@ -164,7 +173,6 @@ export function useScanFlow() {
       } catch (e) {
         console.error(e);
         setError("Pricing failed. Please try again.");
-        // REQUIRED: unblock user
         setState(SCAN_STATE.VERIFY);
       } finally {
         inFlight.current = false;
@@ -187,26 +195,17 @@ export function useScanFlow() {
     setError(null);
 
     try {
-      // Use apiFetch so device_id is injected consistently
       const resp = await apiFetch(
-        `/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(
-          issue
-        )}`,
-        {
-          method: "GET",
-          headers: { "x-anon-id": getDeviceId() },
-        }
+        `/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(issue)}`,
+        { method: "GET", headers: { "x-anon-id": getDeviceId() } }
       );
 
       const data = await resp.json();
-
       if (!data?.ok) throw new Error(data?.error || "Search failed");
 
       setCandidates(data.candidates || []);
       setSelectedCandidate(null);
       setPricingResult(null);
-
-      // Always verify manual search
       setState(SCAN_STATE.VERIFY);
     } catch (e) {
       console.error(e);
@@ -225,19 +224,10 @@ export function useScanFlow() {
       publisher: item.publisher ?? null,
     });
 
-    setPricingResult({
-      ok: true,
-      editionId: item.editionId,
-      value: item.value,
-      comps: [],
-    });
-
+    setPricingResult({ ok: true, editionId: item.editionId, value: item.value, comps: [] });
     setState(SCAN_STATE.RESULT);
   }, []);
 
-  // -------------------------
-  // Public API (THIS is where your extra `};` happened before)
-  // -------------------------
   return {
     state,
     error,

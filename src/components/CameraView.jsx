@@ -45,18 +45,21 @@ const CameraView = ({ onCapture }) => {
     }, []);
 
     const captureOnce = () => {
-        const video = videoRef.current;
-        const canvas = canvasRef.current;
-        if (!video || !canvas) return;
+  if (isScanning) return; // hard guard
 
-        if (video.readyState < 2) {
-            setError("Camera not ready yet. Try again in a second.");
-            return;
-        }
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
 
-        setIsScanning(true);
-        setError("");
+    if (video.readyState < 2) {
+        setError("Camera not ready yet. Try again in a second.");
+        return;
+    }
 
+    setIsScanning(true);
+    setError("");
+
+    try {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
         // ✅ downscale to keep payload small
@@ -71,16 +74,20 @@ const CameraView = ({ onCapture }) => {
         const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
         console.log("CAPTURE len:", dataUrl.length);
 
-        onCapture(dataUrl);
-
-        setIsScanning(false);
-
         if (typeof dataUrl === "string" && dataUrl.startsWith("data:image")) {
-            onCapture(dataUrl);
+        onCapture(dataUrl); // ✅ ONLY ONCE
         } else {
-            setError("Failed to capture image.");
+        setError("Failed to capture image.");
         }
+    } catch (e) {
+        console.error(e);
+        setError("Failed to capture image.");
+    } finally {
+        // tiny delay prevents rapid double taps from firing again instantly
+        setTimeout(() => setIsScanning(false), 200);
+    }
     };
+
 
     return (
         <div className="relative h-[100dvh] w-full bg-black overflow-hidden pointer-events-auto">
