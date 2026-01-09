@@ -19,25 +19,39 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
 
             <h3 className="text-sm text-gray-400 uppercase font-bold mb-2">Select Best Match:</h3>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pb-4">
-                {candidates.map((cand) => (
-                    <div
-                        key={cand.editionId}
-                        onClick={() => onSelect(cand)}
-                        className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
-                    >
-                        <img src={cand.coverUrl || "/default_cover.png"} className="w-16 h-24 object-cover rounded bg-gray-800" alt="Cover" />
-                        <div className="flex-1">
-                            <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
-                            <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>
-                            {cand.year && <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-gray-300 mt-2 inline-block">{cand.year}</span>}
+            {(candidates && candidates.length > 0) ? (
+                <div className="flex-1 overflow-y-auto space-y-3 pb-4">
+                    {candidates.map((cand) => (
+                        <div
+                            key={cand.editionId}
+                            onClick={() => onSelect(cand)}
+                            className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
+                        >
+                            <img
+                                src={cand.coverUrl || "/default_cover.png"}
+                                className="w-16 h-24 object-cover rounded bg-gray-800"
+                                alt="Cover"
+                                onError={(e) => {
+                                    e.target.onerror = null;
+                                    e.target.src = "/default_cover.png";
+                                }}
+                            />
+                            <div className="flex-1">
+                                <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
+                                <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>
+                                {cand.year && <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded text-gray-300 mt-2 inline-block">{cand.year}</span>}
+                            </div>
+                            <div className="text-neon-blue">
+                                ➜
+                            </div>
                         </div>
-                        <div className="text-neon-blue">
-                            ➜
-                        </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                    <p className="mb-4">No matches found.</p>
+                </div>
+            )}
 
             <button onClick={onRetake} className="mt-2 py-3 text-gray-400 text-sm font-bold">
                 None of these? Retake
