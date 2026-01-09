@@ -1,44 +1,82 @@
+// src/app/api/price/route.js
 import { NextResponse } from "next/server";
 import { getEbayMarketPrice } from "../_services/ebayService";
-// ^^^ this MUST be whatever you are already using for pricing
-// Do NOT change your pricing logic — just import it.
 
 export const runtime = "nodejs";
 
-function extractImageUrl(item) {
-  return (
-    item?.image?.imageUrl ||
-    item?.imageUrl ||
-    item?.primaryImageUrl ||
-    item?.thumbnailUrl ||
-    item?.galleryURL ||
-    item?.galleryUrl ||
-    (Array.isArray(item?.pictureURL) ? item.pictureURL[0] : null) ||
-    null
-  );
+/**
+ * This route keeps your existing pricing logic intact (getEbayMarketPrice)
+ * and only applies a pragmatic "cover sanity" filter so we stop showing
+ * trading cards / random junk as comic covers.
+ */
+
+function safeTrim(s) {
+  return (s || "").toString().trim();
 }
 
-function extractItemUrl(item) {
-  return (
-    item?.itemWebUrl ||
-    item?.itemUrl ||
-    item?.viewItemURL ||
-    item?.url ||
-    null
-  );
+function buildEbayItemUrl(firstItemId) {
+  if (!firstItemId) return null;
+  const raw = String(firstItemId);
+  const maybeId = raw.includes("|") ? raw.split("|")[1] : raw;
+  return `https://www.ebay.com/itm/${maybeId}`;
+}
+
+function looksLikeCardJunkQuery(q) {
+  const t = (q || "").toLowerCase();
+  return [
+    "pokemon",
+    "yugioh",
+    "yu-gi-oh",
+    "mtg",
+    "magic",
+    "magic the gathering",
+    "trading card",
+    "tcg",
+    "psa",
+    "bgs",
+    "sgc",
+    "graded",
+    "slab",
+    "booster",
+    "pack",
+    "deck",
+s,
+  ].some((w) => t.includes(w));
+}
+
+function looksLikeCardJunkImageUrl(url) {
+  const u = (url || "").toLowerCase();
+  if (!u) return true; // if missing, treat as not-usable
+
+  const badHints = [
+    "pokemon",
+    "yugioh",
+    "mtg",
+    "magic",
+    "tcg",
+    "tradingcard",
+    "trading-card",
+    "psa",
+    "bgs",
+    "sgc",
+    "graded",
+    "slab",
+  ];
+  return badHints.some((h) => u.includes(h));
+}
+
+function isProbablyComicIssueQuery(seriesTitle, issueNumber) {
+  const s = safeTrim(seriesTitle);
+  const n = safeTrim(issueNumber).replace(/^#/, "");
+  // Basic: series title + numeric-ish issue => likely comic
+  return Boolean(s) && Boolean(n) && /^[0-9]+[a-z]?$/.test(n);
 }
 
 export async function POST(req) {
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
 
-    const {
-      seriesTitle,
-      issueNumber,
-      editionId,
-      device_id,
-      deviceId
-    } = body;
+    const { seriesTitle, issueNumber, editionId, device_id, deviceId } = body;
 
     const device = device_id || deviceId;
     if (!device) {
@@ -48,29 +86,56 @@ export async function POST(req) {
       );
     }
 
-    // Construct query for existing service
-    const query = `${seriesTitle} ${issueNumber || ''}`.trim();
+    const title = safeTrim(seriesTitle);
+    const issue = safeTrim(issueNumber);
 
-    // Call existing service
+    if (!title) {
+      return NextResponse.json(
+        { ok: false, error: "missing_series_title" },
+        { status: 400 }
+      );
+    }
+
+    // Keep your existing service usage
+    const query = `${title} ${issue}`.trim();
     const result = await getEbayMarketPrice(query);
 
-    // Check if error (service returns { source: 'error' } on failure)
-    if (result.source === 'error') {
+    if (!result || result.source === "error") {
       return NextResponse.json(
         { ok: false, error: "eBay Search Failed" },
         { status: 502 }
       );
     }
 
-    // Map service result to new response contract
+    // Build item url the same way you already were
+    const itemUrl = buildEbayItemUrl(result.firstItemId);
+
+    // ✅ Cover sanity: only accept coverUrl if it doesn't look like card junk
+    const strict = isProbablyComicIssueQuery(title, issue);
+
+    let imageUrl = result.coverUrl || null;
+
+    if (strict) {
+      if (looksLikeCardJunkQuery(query) || looksLikeCardJunkImageUrl(imageUrl)) {
+        imageUrl = null;
+      }
+    } else {
+      // Non-strict: still block obvious nonsense if url is clearly "card/graded"
+      if (looksLikeCardJunkImageUrl(imageUrl)) {
+        imageUrl = null;
+      }
+    }
+
+    // Return your existing contract + keep extra fields from result
     return NextResponse.json({
       ok: true,
-      pricing: result.value,
+      editionId: editionId || result.editionId || null,
+      pricing: result.value ?? null,
       ebay: {
-        itemUrl: result.firstItemId ? `https://www.ebay.com/itm/${result.firstItemId.split('|')[1] || result.firstItemId}` : null,
-        imageUrl: result.coverUrl,
+        itemUrl,
+        imageUrl,
       },
-      ...result
+      ...result,
     });
   } catch (err) {
     console.error("price route error:", err);

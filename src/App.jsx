@@ -15,6 +15,7 @@ function App() {
     candidates,
     selectedCandidate,
     pricingResult,
+    quotaStatus,
     actions
   } = useScanFlow();
 
@@ -81,6 +82,47 @@ function App() {
             }}
             onRescan={actions.startCamera}
           />
+        );
+
+      case SCAN_STATE.LIMIT:
+        return (
+          <div className="h-full flex flex-col items-center justify-center bg-midnight-950 p-6 text-center">
+            <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
+              <span className="text-4xl">🛑</span>
+            </div>
+            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Limit Reached</h2>
+            <p className="text-gray-400 mb-6 max-w-xs">{quotaStatus?.message || "You have used all your free scans for this month."}</p>
+
+            <div className="bg-white/5 rounded-xl p-4 w-full max-w-xs mb-8 border border-white/10">
+              <div className="flex justify-between text-sm text-gray-300 mb-2 font-bold">
+                <span>Free Scans Used</span>
+                <span>{quotaStatus?.used || 5} / {quotaStatus?.limit || 5}</span>
+              </div>
+              <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-full bg-red-500 w-full"></div>
+              </div>
+              <p className="text-xs text-gray-500 mt-3 text-right">
+                Resets on {quotaStatus?.resetAt ? new Date(quotaStatus.resetAt).toLocaleDateString() : 'next month'}
+              </p>
+            </div>
+
+            <button
+              onClick={() => IAP.purchaseMonthly()}
+              className="w-full max-w-xs py-4 bg-gradient-to-r from-neon-blue to-blue-600 rounded-xl font-bold text-white shadow-neon mb-3 active:scale-95 transition-transform"
+            >
+              UPGRADE - $2.00 / MONTH
+            </button>
+            <button
+              onClick={() => IAP.purchaseYearly()}
+              className="w-full max-w-xs py-4 bg-white/10 text-white rounded-xl font-bold border border-white/10 active:bg-white/20 transition-colors"
+            >
+              Go Unlimited - $10.00 / YEAR
+            </button>
+
+            <button onClick={actions.resetFlow} className="mt-6 text-gray-500 text-sm underline">
+              Back to Home
+            </button>
+          </div>
         );
 
       case SCAN_STATE.MANUAL_SEARCH:

@@ -8,6 +8,7 @@ export const SCAN_STATE = {
   VERIFY: "VERIFY",
   RESULT: "RESULT",
   MANUAL_SEARCH: "MANUAL_SEARCH",
+  LIMIT: "LIMIT"
 };
 
 export function useScanFlow() {
@@ -18,6 +19,7 @@ export function useScanFlow() {
   const [candidates, setCandidates] = useState([]);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [pricingResult, setPricingResult] = useState(null);
+  const [quotaStatus, setQuotaStatus] = useState(null);
 
   const inFlight = useRef(false);
 
@@ -47,6 +49,7 @@ export function useScanFlow() {
     setCandidates([]);
     setSelectedCandidate(null);
     setPricingResult(null);
+    setQuotaStatus(null);
     setState(SCAN_STATE.HOME);
     inFlight.current = false;
 
@@ -83,8 +86,24 @@ export function useScanFlow() {
         headers: { "x-anon-id": getDeviceId() },
       });
 
+      // Special handling for Quota Limit (429)
+      if (resp.status === 429) {
+        const quotaData = await resp.json();
+        setQuotaStatus(quotaData);
+        setState(SCAN_STATE.LIMIT);
+        // Do NOT throw error
+        return;
+      }
+
       const data = await resp.json();
       console.log("performIdentification: candidates received", data.candidates?.length);
+
+      // Handle custom error code if 200/400 but logical limit
+      if (data?.error === "LIMIT_REACHED" || data?.code === "SCAN_LIMIT_REACHED") {
+        setQuotaStatus(data);
+        setState(SCAN_STATE.LIMIT);
+        return;
+      }
 
       if (!data?.ok) {
         throw new Error(data?.error || "Identification failed");
@@ -235,6 +254,7 @@ export function useScanFlow() {
     candidates,
     selectedCandidate,
     pricingResult,
+    quotaStatus,
     actions: {
       startCamera,
       captureImage,

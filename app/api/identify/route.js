@@ -45,14 +45,24 @@ export async function POST(request) {
                 const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
                 const redisKey = `scan:${deviceId}:${monthKey}`;
 
-                const used = await redis.get(redisKey);
-                if ((parseInt(used) || 0) >= 5) {
+                const usedCount = (await redis.get(redisKey)) || 0;
+                const used = parseInt(usedCount, 10);
+                const limit = 5;
+
+                if (used >= limit) {
+                    // Calculate next month reset date (1st of next month)
+                    const nextMonth = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+
                     return Response.json({
                         ok: false,
-                        code: "SCAN_LIMIT_REACHED",
+                        error: "LIMIT_REACHED",
+                        message: "You’ve used all 5 free scans for this month.",
+                        plan: "FREE",
                         limit: 5,
-                        reset: "monthly"
-                    }, { status: 402 });
+                        used: used,
+                        remaining: 0,
+                        resetAt: nextMonth.toISOString()
+                    }, { status: 429 });
                 }
             }
         }
