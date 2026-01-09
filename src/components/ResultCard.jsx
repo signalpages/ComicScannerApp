@@ -40,10 +40,15 @@ const ResultCard = ({ data, onRescan }) => {
 
   const activePricing = selectedVariant || pricingData;
 
+  // Prioritize "ebay" object if available (new contract)
+  // Fallback to top-level pricingData fields (legacy)
   const activeImage =
+    data.ebay?.imageUrl ||
     pricingData.coverUrl ||
     scanImage ||
     "/default_cover.png";
+
+  const activeItemUrl = data.ebay?.itemUrl;
 
   const ebayQuery = [
     aiData.title,
@@ -95,7 +100,7 @@ const ResultCard = ({ data, onRescan }) => {
                     }`}
                 >
                   <img
-                    src={getProxyUrl(variant.image) || "/default_cover.png"}
+                    src={variant.image || "/default_cover.png"}
                     className="w-full h-full object-cover"
                     alt={variant.name}
                   />
@@ -114,6 +119,10 @@ const ResultCard = ({ data, onRescan }) => {
           src={activeImage}
           alt="Comic cover"
           className="max-w-[180px] rounded-xl shadow-lg"
+          onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = "/default_cover.png";
+          }}
         />
       </div>
 
@@ -164,7 +173,7 @@ const ResultCard = ({ data, onRescan }) => {
       {/* Actions */}
       <div className="grid grid-cols-2 gap-4 mb-6">
         <a
-          href={`https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(
+          href={activeItemUrl || `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(
             ebayQuery
           )}&_sop=12`}
           target="_blank"

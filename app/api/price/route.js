@@ -38,8 +38,14 @@ export async function POST(request) {
 
         const responseData = {
             ok: true,
-            ...result,
-            confidence: result.compsCount > 20 ? "HIGH" : (result.compsCount > 8 ? "MEDIUM" : "LOW")
+            pricing: result.value,
+            ebay: {
+                imageUrl: result.coverUrl,
+                itemUrl: result.firstItemId ? `https://www.ebay.com/itm/${result.firstItemId.split('|')[1] || result.firstItemId}` : null
+            },
+            confidence: result.compsCount > 20 ? "HIGH" : (result.compsCount > 8 ? "MEDIUM" : "LOW"),
+            // Keep legacy top-level for backward compat if needed, but 'ebay' is the new standard
+            ...result
         };
 
         // 3. Cache
