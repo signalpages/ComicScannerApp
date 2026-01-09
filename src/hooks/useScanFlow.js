@@ -56,18 +56,16 @@ export function useScanFlow() {
     setState(SCAN_STATE.CAMERA);
   }, [clearError]);
 
-  const captureImage = useCallback((base64Image) => {
-    clearError();
-    setCapturedImage(base64Image);
-    setState(SCAN_STATE.VERIFY);
-  }, [clearError]);
-
   // -------------------------
   // Identification → Candidates
   // -------------------------
   const performIdentification = useCallback(
     async (image) => {
-      if (inFlight.current) return;
+      console.log('performIdentification: calling API with image length', image?.length);
+      if (inFlight.current) {
+        console.log('performIdentification: skipped (inFlight)');
+        return;
+      }
       inFlight.current = true;
       setError(null);
 
@@ -81,6 +79,7 @@ export function useScanFlow() {
         });
 
         const data = await resp.json();
+        console.log('performIdentification: candidates received', data.candidates?.length);
 
         if (!data?.ok) {
           throw new Error(data?.error || "Identification failed");
@@ -89,9 +88,10 @@ export function useScanFlow() {
         setCandidates(data.candidates || []);
         setSelectedCandidate(null);
         setPricingResult(null);
+        // Note: verify state is set in captureImage too, but safe to set again or here logic-wise
         setState(SCAN_STATE.VERIFY);
       } catch (e) {
-        console.error(e);
+        console.error('performIdentification error', e);
         setError(e?.message || "Identification failed. Please try again.");
         setState(SCAN_STATE.HOME);
       } finally {
@@ -100,6 +100,16 @@ export function useScanFlow() {
     },
     []
   );
+
+  const captureImage = useCallback((base64Image) => {
+    console.log('captureImage: triggered');
+    clearError();
+    setCapturedImage(base64Image);
+    // Directly trigger identification as requested
+    // Set state to verify to show UI (candidates will populate when ready)
+    setState(SCAN_STATE.VERIFY);
+    performIdentification(base64Image);
+  }, [clearError, performIdentification]);
 
   // -------------------------
   // Candidate → Pricing
