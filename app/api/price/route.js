@@ -1,62 +1,92 @@
-import { redis } from '../_services/redis.js';
-import { getEbayMarketPrice } from '../_services/ebayService.js';
+import { NextResponse } from "next/server";
+import { priceComic } from "../_services/ebayService"; 
+// ^^^ this MUST be whatever you are already using for pricing
+// Do NOT change your pricing logic — just import it.
 
-export const runtime = 'nodejs';
+export const runtime = "nodejs";
 
-export async function POST(request) {
-    try {
-        const body = await request.json();
-        let { seriesTitle, issueNumber, editionId } = body;
+function extractImageUrl(item) {
+  return (
+    item?.image?.imageUrl ||
+    item?.imageUrl ||
+    item?.primaryImageUrl ||
+    item?.thumbnailUrl ||
+    item?.galleryURL ||
+    item?.galleryUrl ||
+    (Array.isArray(item?.pictureURL) ? item.pictureURL[0] : null) ||
+    null
+  );
+}
 
-        // Validation
-        if (!seriesTitle) {
-            return Response.json({ ok: false, error: "Missing seriesTitle" }, { status: 400 });
-        }
+function extractItemUrl(item) {
+  return (
+    item?.itemWebUrl ||
+    item?.itemUrl ||
+    item?.viewItemURL ||
+    item?.url ||
+    null
+  );
+}
 
-        // Clean Issue Number
-        let issueClean = (issueNumber || '').toString().trim();
-        if (issueClean.toUpperCase() === 'N/A' || issueClean.toUpperCase() === 'NULL') {
-            issueClean = '';
-        }
-        const issueStr = issueClean;
+export async function POST(req) {
+  try {
+    const body = await req.json();
 
-        // Cache Key
-        const normalizedQuery = `${seriesTitle} ${issueStr}`.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '');
-        const cacheKey = `price:${normalizedQuery.replace(/\s+/g, '-')}`;
+    const {
+      seriesTitle,
+      issueNumber,
+      editionId,
+      device_id,
+      deviceId
+    } = body;
 
-        // 1. Check Cache
-        if (redis) {
-            const cached = await redis.get(cacheKey);
-            if (cached) {
-                return Response.json({ ...cached, cached: true });
-            }
-        }
-
-        // 2. Fetch Pricing
-        const searchQ = `${seriesTitle} ${issueStr}`.trim();
-        const result = await getEbayMarketPrice(searchQ);
-
-        const responseData = {
-            ok: true,
-            pricing: result.value,
-            ebay: {
-                imageUrl: result.coverUrl,
-                itemUrl: result.firstItemId ? `https://www.ebay.com/itm/${result.firstItemId.split('|')[1] || result.firstItemId}` : null
-            },
-            confidence: result.compsCount > 20 ? "HIGH" : (result.compsCount > 8 ? "MEDIUM" : "LOW"),
-            // Keep legacy top-level for backward compat if needed, but 'ebay' is the new standard
-            ...result
-        };
-
-        // 3. Cache
-        if (redis && result.source !== 'error') {
-            await redis.set(cacheKey, responseData, { ex: 43200 }); // 12h
-        }
-
-        return Response.json(responseData);
-
-    } catch (e) {
-        console.error("Price API Error", e);
-        return Response.json({ ok: false, error: e.message }, { status: 500 });
+    const device = device_id || deviceId;
+    if (!device) {
+      return NextResponse.json(
+        { ok: false, error: "missing_device_id" },
+        { status: 400 }
+      );
     }
+
+    // 🔑 THIS IS YOUR EXISTING WORKING PRICING
+    const pricing = await priceComic({
+      seriesTitle,
+      issueNumber,
+      editionId,
+      device_id: device,
+    });
+
+    if (!pricing?.ok) {
+      return NextResponse.json(
+        { ok: false, error: pricing?.error || "Pricing failed" },
+        { status: 502 }
+      );
+    }
+
+    // Try to locate the “best” eBay item
+    const bestItem =
+      pricing.bestItem ||
+      pricing.item ||
+      pricing.ebayItem ||
+      pricing.items?.[0] ||
+      pricing.comps?.[0] ||
+      null;
+
+    const imageUrl = extractImageUrl(bestItem);
+    const itemUrl = extractItemUrl(bestItem);
+
+    return NextResponse.json({
+      ...pricing,
+      ebay: {
+        itemUrl,
+        imageUrl,
+      },
+    });
+  } catch (err) {
+    console.error("price route error:", err);
+    return NextResponse.json(
+      { ok: false, error: "server_error" },
+      { status: 500 }
+    );
+  }
 }
