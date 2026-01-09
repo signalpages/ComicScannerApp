@@ -2,23 +2,8 @@
 import React from 'react';
 
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
-    const getProxyUrl = (url) => {
-        if (!url) return null;
-
-        // allow local assets and data URLs
-        if (url.startsWith("data:")) return url;
-        if (url.startsWith("/")) {
-            const looksLikeImage = /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url);
-            return looksLikeImage ? url : null;
-        }
-
-        // only proxy absolute http(s)
-        if (/^https?:\/\//i.test(url)) {
-            return `/api/image?url=${encodeURIComponent(url)}`;
-        }
-
-        return null;
-    };
+    // Proxy helper removed by User Request to strictly enforce direct eBay URLs
+    // and stop using complex proxy logic for now.
 
     return (
         <div className="h-full flex flex-col bg-midnight-950 p-4">
@@ -41,7 +26,7 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                         onClick={() => onSelect(cand)}
                         className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
                     >
-                        <img src={getProxyUrl(cand.coverUrl)} className="w-16 h-24 object-cover rounded bg-gray-800" alt="Cover" />
+                        <img src={cand.coverUrl || "/default_cover.png"} className="w-16 h-24 object-cover rounded bg-gray-800" alt="Cover" />
                         <div className="flex-1">
                             <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
                             <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>

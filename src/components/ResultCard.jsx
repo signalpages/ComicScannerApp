@@ -41,9 +41,8 @@ const ResultCard = ({ data, onRescan }) => {
   const activePricing = selectedVariant || pricingData;
 
   const activeImage =
-    getProxyUrl(selectedVariant?.image) ||
-    getProxyUrl(scanImage) ||
-    getProxyUrl(pricingData.cover_image) ||
+    pricingData.coverUrl ||
+    scanImage ||
     "/default_cover.png";
 
   const ebayQuery = [

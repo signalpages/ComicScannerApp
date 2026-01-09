@@ -15,7 +15,7 @@ export async function GET(request) {
         {
             editionId: `manual-${title}-${issue || '1'}-A`,
             displayName: `${title} #${issue || '1'}`,
-            coverUrl: "https://comicvine.gamespot.com/a/uploads/scale_small/11/117763/3143431-cm01.jpg",
+            coverUrl: null,
             variantHint: "Cover A",
             year: "????",
             publisher: "Unknown"
@@ -23,8 +23,7 @@ export async function GET(request) {
         {
             editionId: `manual-${title}-${issue || '1'}-B`,
             displayName: `${title} #${issue || '1'} (Variant)`,
-            coverUrl: "https://comicvine.gamespot.com/a/uploads/scale_small/11/117763/3143432-cm02.jpg",
-            variantHint: "Variant B",
+            coverUrl: null,
             year: "????",
             publisher: "Unknown"
         }
