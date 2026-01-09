@@ -121,8 +121,16 @@ function App() {
                 <h3 className="text-gray-500 uppercase font-bold text-xs mb-4 ml-1">Recent Scans</h3>
                 <div className="space-y-3">
                   {history.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5">
-                      <img src={item.coverUrl} className="w-10 h-14 object-cover rounded bg-gray-900" alt="cover" />
+                    <div key={idx} className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5" onClick={() => actions.openHistoryItem(item)}>
+                      <img
+                        src={item.coverUrl || "/default_cover.png"}
+                        className="w-10 h-14 object-cover rounded bg-gray-900"
+                        alt="cover"
+                        onError={(e) => {
+                          e.target.onerror = null;
+                          e.target.src = "/default_cover.png";
+                        }}
+                      />
                       <div>
                         <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
                         <p className="text-neon-blue text-xs font-mono">${item.value?.typical || 0}</p>

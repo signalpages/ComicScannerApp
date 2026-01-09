@@ -154,8 +154,8 @@ export function useScanFlow() {
         saveHistory({
           editionId,
           displayName: candidate.displayName,
-          // coverUrl may be null now; fine.
-          coverUrl: candidate.coverUrl ?? null,
+          // Upgrading history cover: Use eBay image if found, else candidate cover, else null
+          coverUrl: data.ebay?.imageUrl || candidate.coverUrl || null,
           year: candidate.year ?? null,
           publisher: candidate.publisher ?? null,
           value: data.value,
