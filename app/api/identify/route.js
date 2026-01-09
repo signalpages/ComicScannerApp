@@ -113,11 +113,45 @@ Rules:
 
         const aiDataJSON = await response.json();
         const content = aiDataJSON.choices?.[0]?.message?.content;
-        let aiResult = {};
+
+        let aiResult = null;
+        let parseMethod = "strict";
+
+        // 1. Strict Parse
         try {
             aiResult = JSON.parse(content);
         } catch (e) {
-            return Response.json({ ok: false, error: "Invalid JSON from AI" }, { status: 500 });
+            // 2. Loose: Markdown Strip
+            try {
+                const clean = content.replace(/```json\n?|\n?```/g, "").trim();
+                aiResult = JSON.parse(clean);
+                parseMethod = "clean_markdown";
+            } catch (e2) {
+                // 3. Fallback: Regex Regex
+                console.warn("JSON Parse Failed, attempting Regex fallback", content);
+                const titleMatch = content.match(/"seriesTitle":\s*"([^"]+)"/);
+                const issueMatch = content.match(/"issueNumber":\s*"([^"]+)"/);
+
+                if (titleMatch) {
+                    aiResult = {
+                        seriesTitle: titleMatch[1],
+                        issueNumber: issueMatch ? issueMatch[1] : null,
+                        publisher: null,
+                        year: null,
+                        confidence: 0.5 // Penalty for bad format
+                    };
+                    parseMethod = "regex_fallback";
+                }
+            }
+        }
+
+        if (!aiResult || !aiResult.seriesTitle) {
+            console.error("Identify Failed: No Title Found", content);
+            return Response.json({
+                ok: false,
+                error: "Could not identify comic. Try moving closer.",
+                debug_raw: content ? content.substring(0, 100) : "null"
+            }, { status: 200 }); // Return 200 with ok:false to handle gracefully
         }
 
         // Determine Variant Risk
@@ -134,9 +168,29 @@ Rules:
             await redis.expire(rk, 60 * 60 * 24 * 31);
         }
 
+        // 4. Synthesize Candidates (NEVER EMPTY RULE)
+        // If we have a title, we MUST return a candidate so the UI can verify/price it.
+        const safeIssue = aiResult.issueNumber ? `#${aiResult.issueNumber}` : '';
+        const syntheticCandidate = {
+            editionId: `auto-${aiResult.seriesTitle}-${aiResult.issueNumber || '1'}`,
+            seriesTitle: aiResult.seriesTitle,
+            issueNumber: aiResult.issueNumber || null,
+            displayName: `${aiResult.seriesTitle} ${safeIssue}`.trim(),
+            year: aiResult.year || "????",
+            publisher: aiResult.publisher || "Unknown",
+            coverUrl: null, // Identified, but no cover yet (Pricing will fetch)
+            confidence: aiResult.confidence || 0.8
+        };
+
+        const candidates = [syntheticCandidate];
+
+        // Debug info
+        const isDebug = request.url.includes("debug=1");
+
         return Response.json({
             ok: true,
             provider: "openai",
+            parse_method: parseMethod,
             best: {
                 seriesTitle: aiResult.seriesTitle,
                 issueNumber: aiResult.issueNumber,
@@ -144,8 +198,9 @@ Rules:
                 year: aiResult.year,
                 confidence: aiResult.confidence
             },
-            candidates: [],
-            variantRisk: variantRisk
+            candidates: candidates, // Explicitly populated now
+            variantRisk: variantRisk,
+            ...(isDebug ? { debug_raw: content, debug_len: base64Data.length } : {})
         });
 
     } catch (e) {
