@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 // though App.jsx is React logic it should be fine. 
 // However, since we are moving from likely a Client-side only bootstrap, keep it "use client".
 
-import App from '../App';
+import App from '../src/App';
 
 export default function Page() {
     return <App />;

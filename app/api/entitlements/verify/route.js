@@ -1,7 +1,5 @@
-
+export const runtime = "nodejs"
 import { redis } from '../../_services/redis.js';
-
-export const runtime = 'nodejs';
 
 export async function POST(request) {
     try {
