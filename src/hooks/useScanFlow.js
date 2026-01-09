@@ -1,116 +1,234 @@
-import { useState, useRef, useCallback } from 'react';
-import { apiFetch } from '../lib/apiFetch';
-// getDeviceId import removed as it's handled by apiFetch now, unless needed for x-anon-id header explicitly
-// The previous code used getDeviceId() for x-anon-id header. 
-// I should keep getDeviceId import if I need to pass that header, OR I can let apiFetch handle it? 
-// User only asked for BODY injection in apiFetch.
-// But wait, the previous fix used getDeviceId() for x-anon-id.
-// I will keep importing getDeviceId for the header, OR better, I'll rely on the body payload if the backend supports it.
-// Actually, I'll keep the import for the header to be safe, but use apiFetch for the request.
-import { getDeviceId } from '../lib/deviceId';
+import { useState, useRef, useCallback } from "react";
+import { apiFetch } from "../lib/apiFetch";
+import { getDeviceId } from "../lib/deviceId";
 
-// ...
+// If you already have this enum elsewhere, keep yours and delete this.
+export const SCAN_STATE = {
+  HOME: "HOME",
+  CAMERA: "CAMERA",
+  VERIFY: "VERIFY",
+  RESULT: "RESULT",
+  MANUAL_SEARCH: "MANUAL_SEARCH",
+};
 
-const performIdentification = async (image) => {
+export function useScanFlow() {
+  const [state, setState] = useState(SCAN_STATE.HOME);
+  const [error, setError] = useState(null);
+
+  const [capturedImage, setCapturedImage] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [selectedCandidate, setSelectedCandidate] = useState(null);
+  const [pricingResult, setPricingResult] = useState(null);
+
+  const inFlight = useRef(false);
+
+  // -------------------------
+  // History helpers (define BEFORE use)
+  // -------------------------
+  const saveHistory = useCallback((item) => {
     try {
-        // apiFetch injects deviceId into body automatically
-        const response = await apiFetch('/api/identify', {
-            method: 'POST',
-            body: JSON.stringify({
-                image,
-                // deviceId injected by wrapper
-            })
+      const history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+      const newHistory = [item, ...history].slice(0, 10);
+      localStorage.setItem("scanHistory", JSON.stringify(newHistory));
+    } catch (e) {
+      console.error("History save failed", e);
+    }
+  }, []);
+
+  // -------------------------
+  // Core flow helpers
+  // -------------------------
+  const resetFlow = useCallback(() => {
+    setError(null);
+    setCapturedImage(null);
+    setCandidates([]);
+    setSelectedCandidate(null);
+    setPricingResult(null);
+    setState(SCAN_STATE.HOME);
+    inFlight.current = false;
+  }, []);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  // TODO: wire your real camera start/capture
+  const startCamera = useCallback(() => {
+    clearError();
+    setState(SCAN_STATE.CAMERA);
+  }, [clearError]);
+
+  const captureImage = useCallback((base64Image) => {
+    clearError();
+    setCapturedImage(base64Image);
+    setState(SCAN_STATE.VERIFY);
+  }, [clearError]);
+
+  // -------------------------
+  // Identification → Candidates
+  // -------------------------
+  const performIdentification = useCallback(
+    async (image) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setError(null);
+
+      try {
+        const resp = await apiFetch("/api/identify", {
+          method: "POST",
+          // apiFetch will inject { device_id, ... }
+          body: { image },
+          // If your backend uses this for quotas, keep it:
+          headers: { "x-anon-id": getDeviceId() },
         });
 
-        // ... (rest is same)
+        const data = await resp.json();
 
-        // ...
+        if (!data?.ok) {
+          throw new Error(data?.error || "Identification failed");
+        }
 
-        const response = await apiFetch('/api/price', {
-            method: 'POST',
-            headers: {
-                // Header for quota if needed (preserving existing behavior)
-                'x-anon-id': getDeviceId()
-            },
-            body: JSON.stringify({
-                seriesTitle,
-                issueNumber,
-                editionId: candidate.editionId
-                // deviceId injected by wrapper
-            })
+        setCandidates(data.candidates || []);
+        setSelectedCandidate(null);
+        setPricingResult(null);
+        setState(SCAN_STATE.VERIFY);
+      } catch (e) {
+        console.error(e);
+        setError(e?.message || "Identification failed. Please try again.");
+        setState(SCAN_STATE.HOME);
+      } finally {
+        inFlight.current = false;
+      }
+    },
+    []
+  );
+
+  // -------------------------
+  // Candidate → Pricing
+  // -------------------------
+  const confirmCandidate = useCallback(
+    async (candidate) => {
+      if (!candidate) return;
+      if (inFlight.current) return;
+      inFlight.current = true;
+      setError(null);
+
+      try {
+        setSelectedCandidate(candidate);
+
+        const seriesTitle = candidate.seriesTitle || candidate.displayName || "";
+        const issueNumber = candidate.issueNumber || "";
+        const editionId = candidate.editionId;
+
+        const resp = await apiFetch("/api/price", {
+          method: "POST",
+          headers: {
+            // preserve existing quota behavior if backend expects it
+            "x-anon-id": getDeviceId(),
+          },
+          // IMPORTANT: pass an object; apiFetch will JSON.stringify and inject device_id
+          body: {
+            seriesTitle,
+            issueNumber,
+            editionId,
+          },
         });
 
-        const data = await response.json();
+        const data = await resp.json();
+
+        if (!data?.ok) {
+          throw new Error(data?.error || "Pricing failed");
+        }
 
         setPricingResult(data);
         setState(SCAN_STATE.RESULT);
 
         saveHistory({
-            editionId: candidate.editionId,
-            displayName: candidate.displayName,
-            coverUrl: candidate.coverUrl,
-            value: data.value,
-            timestamp: Date.now()
+          editionId,
+          displayName: candidate.displayName,
+          // coverUrl may be null now; fine.
+          coverUrl: candidate.coverUrl ?? null,
+          year: candidate.year ?? null,
+          publisher: candidate.publisher ?? null,
+          value: data.value,
+          timestamp: Date.now(),
         });
-
-    } catch (e) {
+      } catch (e) {
         console.error(e);
-        setError('Pricing failed. Please try again.');
-        setState(SCAN_STATE.VERIFY); // REQUIRED: Unblock user
-    } finally {
+        setError("Pricing failed. Please try again.");
+        // REQUIRED: unblock user
+        setState(SCAN_STATE.VERIFY);
+      } finally {
         inFlight.current = false;
-    }
-};
+      }
+    },
+    [saveHistory]
+  );
 
-// Manual Flow
-const startManualSearch = useCallback(() => {
+  // -------------------------
+  // Manual flow
+  // -------------------------
+  const startManualSearch = useCallback(() => {
     resetFlow();
     setState(SCAN_STATE.MANUAL_SEARCH);
-}, [resetFlow]);
+  }, [resetFlow]);
 
-const performManualSearch = async (title, issue) => {
+  const performManualSearch = useCallback(async (title, issue) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setError(null);
 
     try {
-        const response = await fetch(`/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(issue)}`);
-        const data = await response.json();
+      // Use apiFetch so device_id is injected consistently
+      const resp = await apiFetch(
+        `/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(
+          issue
+        )}`,
+        {
+          method: "GET",
+          headers: { "x-anon-id": getDeviceId() },
+        }
+      );
 
-        if (!data.ok) throw new Error(data.error || 'Search failed');
+      const data = await resp.json();
 
-        setCandidates(data.candidates || []);
-        setState(SCAN_STATE.VERIFY); // Always verify manual search
+      if (!data?.ok) throw new Error(data?.error || "Search failed");
 
+      setCandidates(data.candidates || []);
+      setSelectedCandidate(null);
+      setPricingResult(null);
+
+      // Always verify manual search
+      setState(SCAN_STATE.VERIFY);
     } catch (e) {
-        setError(e.message);
+      console.error(e);
+      setError(e?.message || "Search failed. Please try again.");
     } finally {
-        inFlight.current = false;
+      inFlight.current = false;
     }
-};
+  }, []);
 
-const clearError = useCallback(() => setError(null), []);
-
-const openHistoryItem = useCallback((item) => {
+  const openHistoryItem = useCallback((item) => {
     setSelectedCandidate({
-        editionId: item.editionId,
-        displayName: item.displayName,
-        coverUrl: item.coverUrl,
-        year: item.year, // Ensure history saver includes this if possible
-        publisher: item.publisher
+      editionId: item.editionId,
+      displayName: item.displayName,
+      coverUrl: item.coverUrl ?? null,
+      year: item.year ?? null,
+      publisher: item.publisher ?? null,
     });
 
     setPricingResult({
-        ok: true,
-        editionId: item.editionId,
-        value: item.value,
-        comps: []
+      ok: true,
+      editionId: item.editionId,
+      value: item.value,
+      comps: [],
     });
 
     setState(SCAN_STATE.RESULT);
-}, []);
+  }, []);
 
-return {
+  // -------------------------
+  // Public API (THIS is where your extra `};` happened before)
+  // -------------------------
+  return {
     state,
     error,
     capturedImage,
@@ -118,25 +236,15 @@ return {
     selectedCandidate,
     pricingResult,
     actions: {
-        startCamera,
-        captureImage,
-        confirmCandidate,
-        startManualSearch,
-        performManualSearch,
-        resetFlow,
-        clearError,
-        openHistoryItem
-    }
-};
-};
-
-// Helper for History
-const saveHistory = (item) => {
-    try {
-        const history = JSON.parse(localStorage.getItem('scanHistory') || '[]');
-        const newHistory = [item, ...history].slice(0, 10);
-        localStorage.setItem('scanHistory', JSON.stringify(newHistory));
-    } catch (e) {
-        console.error('History save failed', e);
-    }
-};
+      startCamera,
+      captureImage,
+      performIdentification,
+      confirmCandidate,
+      startManualSearch,
+      performManualSearch,
+      resetFlow,
+      clearError,
+      openHistoryItem,
+    },
+  };
+}

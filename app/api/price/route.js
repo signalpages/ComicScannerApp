@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { priceComic } from "../_services/ebayService"; 
+import { getEbayMarketPrice } from "../_services/ebayService";
 // ^^^ this MUST be whatever you are already using for pricing
 // Do NOT change your pricing logic — just import it.
 
@@ -48,39 +48,29 @@ export async function POST(req) {
       );
     }
 
-    // 🔑 THIS IS YOUR EXISTING WORKING PRICING
-    const pricing = await priceComic({
-      seriesTitle,
-      issueNumber,
-      editionId,
-      device_id: device,
-    });
+    // Construct query for existing service
+    const query = `${seriesTitle} ${issueNumber || ''}`.trim();
 
-    if (!pricing?.ok) {
+    // Call existing service
+    const result = await getEbayMarketPrice(query);
+
+    // Check if error (service returns { source: 'error' } on failure)
+    if (result.source === 'error') {
       return NextResponse.json(
-        { ok: false, error: pricing?.error || "Pricing failed" },
+        { ok: false, error: "eBay Search Failed" },
         { status: 502 }
       );
     }
 
-    // Try to locate the “best” eBay item
-    const bestItem =
-      pricing.bestItem ||
-      pricing.item ||
-      pricing.ebayItem ||
-      pricing.items?.[0] ||
-      pricing.comps?.[0] ||
-      null;
-
-    const imageUrl = extractImageUrl(bestItem);
-    const itemUrl = extractItemUrl(bestItem);
-
+    // Map service result to new response contract
     return NextResponse.json({
-      ...pricing,
+      ok: true,
+      pricing: result.value,
       ebay: {
-        itemUrl,
-        imageUrl,
+        itemUrl: result.firstItemId ? `https://www.ebay.com/itm/${result.firstItemId.split('|')[1] || result.firstItemId}` : null,
+        imageUrl: result.coverUrl,
       },
+      ...result
     });
   } catch (err) {
     console.error("price route error:", err);
