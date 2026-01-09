@@ -15,7 +15,9 @@ export const apiFetch = async (url, options = {}) => {
         ...options,
         headers: {
             ...defaultHeaders,
-            ...options.headers
+            ...options.headers,
+            // Header Dev Bypass (only works in non-production)
+            ...(process.env.NODE_ENV !== 'production' ? { "x-dev-bypass": "1" } : {})
         }
     };
 

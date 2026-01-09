@@ -11,6 +11,18 @@ const extractBase64 = (input) => {
     return null;
 };
 
+//bypass limits for testing
+const isDevBypass = (request) => {
+  // Never allow bypass in production
+  if (process.env.NODE_ENV === "production") return false;
+
+  // Explicit header opt-in
+  if (request.headers.get("x-dev-bypass") === "1") return true;
+
+  return false;
+};
+
+
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -25,7 +37,11 @@ export async function POST(request) {
         }
 
         // --- QUOTA LOGIC ---
-        if (process.env.UPSTASH_REDIS_REST_URL) {
+        //if (process.env.UPSTASH_REDIS_REST_URL) {
+        const devBypass = isDevBypass(request);
+
+        if (process.env.UPSTASH_REDIS_REST_URL && !devBypass) {
+
             // Check Entitlement
             const entitlementKey = `entitlement:${deviceId}`;
             const entitlementRaw = await redis.get(entitlementKey);
@@ -170,7 +186,8 @@ Rules:
         if (aiResult.confidence < 0.6) variantRisk = "HIGH";
 
         // Increment Quota
-        if (process.env.UPSTASH_REDIS_REST_URL && deviceId) {
+        //if (process.env.UPSTASH_REDIS_REST_URL && deviceId) {
+        if (process.env.UPSTASH_REDIS_REST_URL && deviceId && !devBypass) {
             const d = new Date();
             const mk = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
             const rk = `scan:${deviceId}:${mk}`;
