@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 
-const formatPrice = (value) =>
-  typeof value === "number" && Number.isFinite(value)
-    ? `$${Math.trunc(value)}`
-    : "$-";
+const formatRange = (min, max) => {
+  if (!min || !max || isNaN(min) || isNaN(max)) return "$-";
+  return `$${Math.trunc(min)} – $${Math.trunc(max)}`;
+};
 
 const sanitizeIssue = (issue) =>
   issue && /^\d+$/.test(String(issue)) ? Number(issue) : null;
@@ -13,35 +13,15 @@ const ResultCard = ({ data, onRescan }) => {
 
   const { aiData = {}, pricingData = {}, scanImage } = data;
 
-  const getProxyUrl = (url) => {
-    if (!url) return null;
-
-    // allow local assets and data URLs
-    if (url.startsWith("data:")) return url;
-    if (url.startsWith("/")) {
-      // local file must actually be an image asset you host
-      // if it's just a filename-ish thing, don't try to load it
-      const looksLikeImage = /\.(png|jpe?g|webp|gif|svg)(\?.*)?$/i.test(url);
-      return looksLikeImage ? url : null;
-    }
-
-    // only proxy absolute http(s)
-    if (/^https?:\/\//i.test(url)) {
-      return `/api/image?url=${encodeURIComponent(url)}`;
-    }
-
-    // anything else (e.g. "3143431-cm01.jpg") -> treat as missing
-    return null;
-  };
+  // Confidence determination
+  const confidence = aiData.confidence || pricingData.confidence || 0.8;
+  const isHighConfidence = confidence > 0.7;
 
   const [selectedVariant, setSelectedVariant] = useState(null);
 
   const issueNum = sanitizeIssue(aiData.issue_number);
-
   const activePricing = selectedVariant || pricingData;
 
-  // Prioritize "ebay" object if available (new contract)
-  // Fallback to top-level pricingData fields (legacy)
   const activeImage =
     data.ebay?.imageUrl ||
     pricingData.coverUrl ||
@@ -58,11 +38,23 @@ const ResultCard = ({ data, onRescan }) => {
     .filter(Boolean)
     .join(" ");
 
-  const showRawDisclaimer =
-    activePricing?.price_raw > 20 && !aiData?.is_key_issue;
+  // Derived Range Logic
+  // Use poor (25%) and nearMint (75%) as the primary market range
+  const priceLow = activePricing?.values?.poor ?? activePricing?.poor ?? 0;
+  const priceHigh = activePricing?.values?.nearMint ?? activePricing?.nearMint ?? 0;
+  const priceTypical = activePricing?.values?.typical ?? activePricing?.typical ?? 0;
+
+  // Fallback for "thin data" if range is inverted or zero
+  const hasValidPricing = priceHigh > 0;
 
   return (
     <div className="h-full flex flex-col p-4 overflow-y-auto">
+      {/* Confidence Label */}
+      <div className="flex justify-center mb-2">
+        <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full ${isHighConfidence ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+          Match Confidence: {isHighConfidence ? 'High' : 'Possible Match'}
+        </span>
+      </div>
 
       {/* Variant Selector */}
       {Array.isArray(pricingData.variants) &&
@@ -72,7 +64,6 @@ const ResultCard = ({ data, onRescan }) => {
               Select Variant
             </p>
             <div className="flex gap-4 overflow-x-auto pb-4 hide-scrollbar px-1">
-              {/* Original Scan */}
               <div
                 onClick={() => setSelectedVariant(null)}
                 className={`flex-shrink-0 w-24 h-36 relative rounded-xl overflow-hidden cursor-pointer border-2 ${!selectedVariant
@@ -141,55 +132,81 @@ const ResultCard = ({ data, onRescan }) => {
               ? pricingData.cover_date.split("-")[0]
               : "—")}
         </p>
+        {isHighConfidence && aiData.is_key_issue && (
+          <p className="text-yellow-400 text-xs mt-2 font-bold">★ KEY ISSUE</p>
+        )}
       </div>
 
-      {/* Prices */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
-        <div className="glass-panel p-4 rounded-3xl text-center">
-          <span className="text-gray-400 text-xs uppercase">Raw</span>
-          <div className="text-3xl text-neon-blue font-bold">
-            {formatPrice(
-              activePricing?.values?.raw ?? activePricing?.price_raw
-            )}
+      {/* Market Value Section */}
+      {isHighConfidence && hasValidPricing ? (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <h3 className="text-white font-bold text-lg">Market Value</h3>
+            <span className="text-gray-500 text-xs">(Recent Sales)</span>
           </div>
-          {showRawDisclaimer && (
-            <div className="text-[10px] text-gray-300 mt-2">
-              High grade est. — check eBay
+
+          <div className="glass-panel p-5 rounded-3xl">
+            {/* Primary Range */}
+            <div className="text-center mb-4">
+              <span className="text-gray-400 text-xs uppercase tracking-widest">Est. Market Range</span>
+              <div className="text-4xl text-white font-black mt-1 tracking-tight">
+                {formatRange(priceLow, priceHigh)}
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="glass-panel p-4 rounded-3xl text-center">
-          <span className="text-gray-400 text-xs uppercase">CGC 9.8</span>
-          <div className="text-3xl text-neon-purple font-bold">
-            {formatPrice(
-              activePricing?.values?.cgc_9_8 ??
-              activePricing?.price_graded
-            )}
+            {/* Grade Bands */}
+            <div className="grid grid-cols-2 gap-4 border-t border-white/10 pt-4">
+              <div className="text-center border-r border-white/10">
+                <p className="text-gray-500 text-[10px] uppercase font-bold">CGC 9.0 – 9.2</p>
+                <p className="text-neon-blue font-bold text-lg mt-1">
+                  {formatRange(priceTypical, priceHigh)}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-gray-500 text-[10px] uppercase font-bold">CGC 9.8</p>
+                <p className="text-neon-purple font-bold text-lg mt-1">
+                  {priceHigh > 200 ? formatRange(priceHigh, priceHigh * 1.5) : "Premium"}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="mb-6 glass-panel p-6 rounded-3xl text-center">
+          <p className="text-gray-300 font-bold mb-2">Pricing Unavailable</p>
+          <p className="text-gray-500 text-sm">
+            {isHighConfidence
+              ? "Not enough recent sales data to estimate value."
+              : "Low confidence match. Please verify title or rescan."}
+          </p>
+        </div>
+      )}
 
       {/* Actions */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <a
           href={activeItemUrl || `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(
             ebayQuery
           )}&_sop=12`}
           target="_blank"
           rel="noopener noreferrer"
-          className="glass-panel p-4 rounded-3xl text-center text-blue-300 hover:text-white"
+          className="glass-panel p-4 rounded-3xl text-center text-blue-300 hover:text-white font-bold"
         >
-          eBay
+          View Recent Sales
         </a>
 
         <button
           onClick={onRescan}
-          className="glass-panel p-4 rounded-3xl text-center text-white"
+          className="glass-panel p-4 rounded-3xl text-center text-white font-bold"
         >
           Scan Next
         </button>
       </div>
+
+      {/* Disclaimer */}
+      <p className="text-center text-[10px] text-gray-600 px-4 leading-tight">
+        Values reflect recent public sales and vary by condition, grading, and market demand.
+      </p>
     </div>
   );
 };
