@@ -27,3 +27,7 @@ dist-ssr
 .env*.local
 .next/
 next-env.d.ts
+
+# Android/Gradle junk
+.gradle/
+**/.gradle/
