@@ -27,7 +27,7 @@ const ResultCard = ({ data, onRescan }) => {
 
     // only proxy absolute http(s)
     if (/^https?:\/\//i.test(url)) {
-      return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+      return `/api/image?url=${encodeURIComponent(url)}`;
     }
 
     // anything else (e.g. "3143431-cm01.jpg") -> treat as missing

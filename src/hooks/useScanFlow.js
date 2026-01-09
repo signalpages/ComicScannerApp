@@ -90,28 +90,28 @@ export const useScanFlow = () => {
             const best = data.best;
             const safeIssue =
                 best.issueNumber !== null &&
-                best.issueNumber !== undefined &&
-                /^\d+$/.test(String(best.issueNumber))
+                    best.issueNumber !== undefined &&
+                    /^\d+$/.test(String(best.issueNumber))
                     ? String(best.issueNumber)
                     : null;
 
             const candidate = {
-            editionId: safeIssue
-                ? `auto-${best.seriesTitle}-${safeIssue}`
-                : `auto-${best.seriesTitle}`,
+                editionId: safeIssue
+                    ? `auto-${best.seriesTitle}-${safeIssue}`
+                    : `auto-${best.seriesTitle}`,
 
-            seriesTitle: best.seriesTitle,
-            issueNumber: safeIssue,
+                seriesTitle: best.seriesTitle,
+                issueNumber: safeIssue,
 
-            displayName: safeIssue
-                ? `${best.seriesTitle} #${safeIssue}`
-                : best.seriesTitle,
+                displayName: safeIssue
+                    ? `${best.seriesTitle} #${safeIssue}`
+                    : best.seriesTitle,
 
-            year: best.year || null,
-            publisher: best.publisher || null,
+                year: best.year || null,
+                publisher: best.publisher || null,
 
-            coverUrl: null, // Identify step does not fetch covers
-            confidence: best.confidence
+                coverUrl: null, // Identify step does not fetch covers
+                confidence: best.confidence
             };
 
             setCandidates([candidate]);
@@ -133,28 +133,28 @@ export const useScanFlow = () => {
         }
     };
 
-            const confirmCandidate = useCallback((candidate) => {
-                setSelectedCandidate(candidate);
-                setState(SCAN_STATE.PRICING);
-                // Pass candidate object so we can extract title/issue for Price API
-                fetchPricing(candidate);
-            }, []);
+    const confirmCandidate = useCallback((candidate) => {
+        setSelectedCandidate(candidate);
+        setState(SCAN_STATE.PRICING);
+        // Pass candidate object so we can extract title/issue for Price API
+        fetchPricing(candidate);
+    }, []);
 
-            const fetchPricing = async (candidate) => {
-                try {
+    const fetchPricing = async (candidate) => {
+        try {
             // Extract necessary fields for Price API
             // It expects { seriesTitle, issueNumber } OR editionId
             const seriesTitle = candidate.seriesTitle || candidate.displayName;
             const issueNumber =
-            candidate.issueNumber && /^\d+$/.test(candidate.issueNumber)
-                ? candidate.issueNumber
-                : null;
+                candidate.issueNumber && /^\d+$/.test(candidate.issueNumber)
+                    ? candidate.issueNumber
+                    : null;
 
             body: JSON.stringify({
                 seriesTitle,
                 issueNumber,
                 editionId: candidate.editionId
-                })
+            })
 
             // REQUIRED GUARD: Missing Title
             if (!seriesTitle || seriesTitle === 'Unknown') {
@@ -168,7 +168,7 @@ export const useScanFlow = () => {
                 headers: {
                     'Content-Type': 'application/json',
                     // Header for quota if needed
-                    'x-anon-id': getAnonId()
+                    'x-anon-id': getDeviceId()
                 },
                 body: JSON.stringify({
                     seriesTitle,

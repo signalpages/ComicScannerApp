@@ -14,7 +14,7 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
 
         // only proxy absolute http(s)
         if (/^https?:\/\//i.test(url)) {
-            return `/api/proxy-image?url=${encodeURIComponent(url)}`;
+            return `/api/image?url=${encodeURIComponent(url)}`;
         }
 
         return null;
