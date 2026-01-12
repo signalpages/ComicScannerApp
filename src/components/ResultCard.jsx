@@ -23,9 +23,10 @@ const ResultCard = ({ data, onRescan }) => {
   const activePricing = selectedVariant || pricingData;
 
   const activeImage =
-    data.ebay?.imageUrl ||
-    pricingData.coverUrl ||
-    scanImage ||
+    scanImage ||                      // 1. User's photo (Highest priority)
+    pricingData.coverUrl ||           // 2. Canonical cover
+    data.ebay?.imageUrl ||            // 3. Live eBay result (if fresh scan)
+    pricingData.marketImageUrl ||     // 4. Stored eBay image (history)
     "/default_cover.png";
 
   const activeItemUrl = data.ebay?.itemUrl;

@@ -13,13 +13,13 @@ const extractBase64 = (input) => {
 
 //bypass limits for testing
 const isDevBypass = (request) => {
-  // Never allow bypass in production
-  if (process.env.NODE_ENV === "production") return false;
+    // Never allow bypass in production
+    if (process.env.NODE_ENV === "production") return false;
 
-  // Explicit header opt-in
-  if (request.headers.get("x-dev-bypass") === "1") return true;
+    // Explicit header opt-in
+    if (request.headers.get("x-dev-bypass") === "1") return true;
 
-  return false;
+    return false;
 };
 
 
@@ -203,7 +203,7 @@ Rules:
             seriesTitle: aiResult.seriesTitle,
             issueNumber: aiResult.issueNumber || null,
             displayName: `${aiResult.seriesTitle} ${safeIssue}`.trim(),
-            year: aiResult.year || "????",
+            year: aiResult.year || null,
             publisher: aiResult.publisher || "Unknown",
             coverUrl: body.thumbnailUrl || body.scanImageUrl || null,
             confidence: aiResult.confidence || 0.8

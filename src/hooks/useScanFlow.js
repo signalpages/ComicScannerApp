@@ -43,6 +43,8 @@ export function useScanFlow() {
     }
   }, []);
 
+
+
   // -------------------------
   // Core flow helpers
   // -------------------------
@@ -187,7 +189,9 @@ export function useScanFlow() {
         saveHistory({
           editionId,
           displayName: candidate.displayName,
-          coverUrl: data.ebay?.imageUrl || candidate.coverUrl || null,
+          scanImage: capturedImage, // Persist user scan
+          coverUrl: candidate.coverUrl || null, // Keep original cover
+          marketImageUrl: data.ebay?.imageUrl || null, // Store market comp image
           year: candidate.year ?? null,
           publisher: candidate.publisher ?? null,
           value: data.value,
@@ -195,6 +199,19 @@ export function useScanFlow() {
         });
       } catch (e) {
         console.error(e);
+        try {
+          await apiFetch("/api/log", {
+            method: "POST",
+            body: {
+              where: "confirmCandidate",
+              message: e.message,
+              editionId,
+              seriesTitle,
+              issueNumber,
+              userAgent: navigator.userAgent,
+            },
+          });
+        } catch { }
         setError("Pricing failed. Please try again.");
         setState(SCAN_STATE.VERIFY);
       } finally {
@@ -239,10 +256,13 @@ export function useScanFlow() {
   }, []);
 
   const openHistoryItem = useCallback((item) => {
+    setCapturedImage(item.scanImage || null); // Restore scan image
+
     setSelectedCandidate({
       editionId: item.editionId,
       displayName: item.displayName,
       coverUrl: item.coverUrl ?? null,
+      marketImageUrl: item.marketImageUrl ?? null,
       year: item.year ?? null,
       publisher: item.publisher ?? null,
     });

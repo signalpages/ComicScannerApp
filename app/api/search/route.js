@@ -17,14 +17,14 @@ export async function GET(request) {
             displayName: `${title} #${issue || '1'}`,
             coverUrl: null,
             variantHint: "Cover A",
-            year: "????",
+            year: null,
             publisher: "Unknown"
         },
         {
             editionId: `manual-${title}-${issue || '1'}-B`,
             displayName: `${title} #${issue || '1'} (Variant)`,
             coverUrl: null,
-            year: "????",
+            year: null,
             publisher: "Unknown"
         }
     ];

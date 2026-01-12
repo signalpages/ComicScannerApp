@@ -76,6 +76,7 @@ function App() {
                 price_graded: pricingResult?.value?.nearMint,
                 // Mapping: use coverUrl to match ResultCard expectation
                 coverUrl: selectedCandidate?.coverUrl,
+                marketImageUrl: selectedCandidate?.marketImageUrl,
                 publisher: selectedCandidate?.publisher,
                 cover_date: selectedCandidate?.year
               },
