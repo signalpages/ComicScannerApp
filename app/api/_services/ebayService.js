@@ -102,6 +102,27 @@ const titleHasIssue = (title = "", issue = null) => {
   return re.test(t);
 };
 
+// Key Issue Detection
+const isKeyIssue = (query) => {
+  const n = parseIssueFromQuery(query);
+  const s = norm(query);
+
+  // Specific issue numbers that are often keys (across many series, simplistic but effective)
+  const keyIssueNumbers = ["1", "50", "100", "129", "181", "300"];
+
+  if (keyIssueNumbers.includes(n)) return true;
+
+  // Keyword detection
+  return (
+    s.includes("anniversary") ||
+    s.includes("giant") ||
+    s.includes("special") ||
+    s.includes("annual") ||
+    s.includes("first appearance") ||
+    s.includes("1st app")
+  );
+};
+
 /**
  * Title contamination guard:
  * If the query does NOT include some tokens, reject results that DO include them.
@@ -234,6 +255,7 @@ export const getEbayMarketPrice = async (query) => {
     const skew = values.typical > 0 ? maxPrice / values.typical : 0;
 
     const shouldCheckSold =
+      isKeyIssue(query) ||            // Force check for potential keys
       values.typical > 15 ||          // Values > $15 (likely key)
       prices.length < 10 ||           // Thin data (rare)
       skew > 3;                       // High variance (likely has slabs)

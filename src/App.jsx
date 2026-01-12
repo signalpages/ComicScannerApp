@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useMemo, useEffect, useState } from "react";
 import Layout from "./components/Layout";
 import CameraView from "./components/CameraView";
 import ResultCard from "./components/ResultCard";
@@ -20,18 +20,33 @@ function App() {
   } = useScanFlow();
 
   // History (read from local storage for Home view)
+  // History (read from local storage for Home view)
+  const [historyVersion, setHistoryVersion] = useState(0);
   const history = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem('scanHistory') || '[]');
     } catch { return []; }
-  }, [state]); // Re-read on state change (e.g. after scan result)
+  }, [state, historyVersion]); // Re-read on state change or manual version bump
+
+  const clearHistory = () => {
+    if (!confirm("Clear all scan history?")) return;
+    localStorage.removeItem("scanHistory");
+    setHistoryVersion(v => v + 1);
+    actions.resetFlow();
+  };
 
   // -------------------------
   // Android Back Button Handling
   // -------------------------
+  // -------------------------
+  // Android Back Button Handling
+  // -------------------------
   useEffect(() => {
-    // If we are NOT at home, push a state so the back button has something to pop
-    if (state !== SCAN_STATE.HOME) {
+    // If we ARE at home, replace state to anchor the history stack.
+    if (state === SCAN_STATE.HOME) {
+      window.history.replaceState({ view: "home" }, "");
+    } else {
+      // If we are NOT at home, push a state so the back button has something to pop
       window.history.pushState({ view: state }, "");
     }
 
@@ -156,12 +171,8 @@ function App() {
       default:
         return (
           <div className="h-full flex flex-col bg-midnight-950 p-6 overflow-y-auto">
-            <header className="mt-8 mb-12 text-center">
-              <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">
-                COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
-              </h1>
-              <p className="text-blue-200/70 text-sm">AI Identification & Market Valuation</p>
-            </header>
+            {/* Header Removed per User Request (Clean UI) */}
+            <div className="h-4"></div>
 
             <div className="grid gap-4">
               <button
@@ -184,12 +195,17 @@ function App() {
             {/* Recent History */}
             {history.length > 0 && (
               <div className="mt-10">
-                <h3 className="text-gray-500 uppercase font-bold text-xs mb-4 ml-1">Recent Scans</h3>
+                <div className="flex justify-between items-end mb-4 px-1">
+                  <h3 className="text-gray-500 uppercase font-bold text-xs">Recent Scans</h3>
+                  <button onClick={clearHistory} className="text-xs text-gray-500 hover:text-white underline">
+                    Clear
+                  </button>
+                </div>
                 <div className="space-y-3">
                   {history.map((item, idx) => (
                     <div key={idx} className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5" onClick={() => actions.openHistoryItem(item)}>
                       <img
-                        src={item.coverUrl || "/default_cover.png"}
+                        src={item.scanImage || item.marketImageUrl || item.coverUrl || "/default_cover.png"}
                         className="w-10 h-14 object-cover rounded bg-gray-900"
                         alt="cover"
                         onError={(e) => {
