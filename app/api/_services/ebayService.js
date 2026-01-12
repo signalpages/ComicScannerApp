@@ -85,7 +85,8 @@ const parseIssueFromQuery = (q = "") => {
   return all[all.length - 1];
 };
 
-const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (s) =>
+  String(s).replace(/[.*+?^()[\]\\|]/g, "\\$&");
 
 const titleHasIssue = (title = "", issue = null) => {
   if (!issue) return true;
@@ -101,8 +102,29 @@ const titleHasIssue = (title = "", issue = null) => {
 };
 
 /**
+ * Title contamination guard:
+ * If the query does NOT include some tokens, reject results that DO include them.
+ * This prevents "Spider-Man #23" from accidentally selecting "Ultimate Spider-Man #23".
+ */
+const rejectContaminatedTitle = (title, query) => {
+  const t = norm(title);
+  const q = norm(query);
+
+  // If user didn't ask for "ultimate", don't accept titles containing it
+  if (!q.includes("ultimate") && t.includes("ultimate")) return true;
+
+  // (Optional) Add more if needed later:
+  // if (!q.includes("spectacular") && t.includes("spectacular")) return true;
+  // if (!q.includes("amazing") && t.includes("amazing")) return true;
+  // if (!q.includes("web of") && t.includes("web of")) return true;
+
+  return false;
+};
+
+/**
  * Pick the most likely "real comic" listing for cover art.
- * NEW: if we can parse an issue number from the query, REQUIRE the title to match it.
+ * If we can parse an issue number from the query, REQUIRE the title to match it.
+ * Also applies title contamination guards (e.g. "ultimate").
  */
 const pickBestCoverItem = (items, query) => {
   const qNorm = norm(query);
@@ -116,6 +138,9 @@ const pickBestCoverItem = (items, query) => {
 
     // 1) Kill obvious junk verticals (cards/slabs/TCG/etc.)
     if (isCardJunk(title)) continue;
+
+    // Title contamination guard
+    if (rejectContaminatedTitle(title, query)) continue;
 
     // 2) Require issue match when we have one
     if (!titleHasIssue(title, issue)) continue;
@@ -138,12 +163,15 @@ const pickBestCoverItem = (items, query) => {
   }
 
   // Fallback: if nothing matched with issue constraint, loosen slightly
-  // (still avoids card junk). This prevents blank covers for weird titles.
+  // (still avoids card junk + contamination). Prevents blank covers.
   if (!best) {
     for (const item of items || []) {
       const title = item?.title || "";
       if (!title) continue;
       if (isCardJunk(title)) continue;
+
+      // ✅ Title contamination guard (keep in fallback too)
+      if (rejectContaminatedTitle(title, query)) continue;
 
       const img = extractImageUrl(item);
       if (!img) continue;
@@ -194,7 +222,7 @@ export const getEbayMarketPrice = async (query) => {
     const prices = validItems.map((i) => parseFloat(i.price.value));
     const values = calculatePercentiles(prices);
 
-    // ✅ NEW: pick best cover item (instead of items[0])
+    // pick best cover item (instead of items[0])
     const bestCoverItem = pickBestCoverItem(items, query);
 
     return {
