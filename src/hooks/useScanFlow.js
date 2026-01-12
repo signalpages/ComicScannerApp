@@ -5,7 +5,10 @@ import { getDeviceId } from "../lib/deviceId";
 export const SCAN_STATE = {
   HOME: "HOME",
   CAMERA: "CAMERA",
+  CAPTURED: "CAPTURED",
+  IDENTIFYING: "IDENTIFYING",
   VERIFY: "VERIFY",
+  PRICING: "PRICING",
   RESULT: "RESULT",
   MANUAL_SEARCH: "MANUAL_SEARCH",
   LIMIT: "LIMIT"
@@ -138,7 +141,8 @@ export function useScanFlow() {
       clearError();
 
       setCapturedImage(base64Image);
-      setState(SCAN_STATE.VERIFY);
+      // ✅ FIX: Set state to IDENTIFYING so App.jsx shows spinner instead of empty VerifyView
+      setState(SCAN_STATE.IDENTIFYING);
 
       // Call identify once
       performIdentification(base64Image);

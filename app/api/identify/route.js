@@ -205,7 +205,7 @@ Rules:
             displayName: `${aiResult.seriesTitle} ${safeIssue}`.trim(),
             year: aiResult.year || "????",
             publisher: aiResult.publisher || "Unknown",
-            coverUrl: null, // Identified, but no cover yet (Pricing will fetch)
+            coverUrl: body.thumbnailUrl || body.scanImageUrl || null,
             confidence: aiResult.confidence || 0.8
         };
 

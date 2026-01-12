@@ -74,7 +74,8 @@ function App() {
                 ...pricingResult?.value, // poor, typical, nearMint
                 price_raw: pricingResult?.value?.typical,
                 price_graded: pricingResult?.value?.nearMint,
-                cover_image: selectedCandidate?.coverUrl,
+                // Mapping: use coverUrl to match ResultCard expectation
+                coverUrl: selectedCandidate?.coverUrl,
                 publisher: selectedCandidate?.publisher,
                 cover_date: selectedCandidate?.year
               },
