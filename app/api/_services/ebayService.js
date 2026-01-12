@@ -1,5 +1,6 @@
 // src/app/api/_services/ebayService.js
 import { getEbayToken } from "./ebayToken.js";
+import { getEbaySoldPrice } from "./ebaySoldService.js";
 
 const calculatePercentiles = (prices) => {
   if (!prices || prices.length === 0) return { poor: 0, typical: 0, nearMint: 0 };
@@ -224,6 +225,34 @@ export const getEbayMarketPrice = async (query) => {
 
     // pick best cover item (instead of items[0])
     const bestCoverItem = pickBestCoverItem(items, query);
+
+    // ---------------------------------------------------------
+    // SOLD COMPS TRIGGER LOGIC
+    // ---------------------------------------------------------
+    // Check if we should switch to sold listings (keys, slabs, high value)
+    const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
+    const skew = values.typical > 0 ? maxPrice / values.typical : 0;
+
+    const shouldCheckSold =
+      values.typical > 15 ||          // Values > $15 (likely key)
+      prices.length < 10 ||           // Thin data (rare)
+      skew > 3;                       // High variance (likely has slabs)
+
+    if (shouldCheckSold) {
+      console.log(`[Pricing] Triggered Sold Check for "${query}" (Typical: $${values.typical}, Count: ${prices.length}, Skew: ${skew.toFixed(1)})`);
+
+      const soldData = await getEbaySoldPrice(query);
+
+      if (soldData && soldData.compsCount > 0) {
+        console.log(`[Pricing] Found ${soldData.compsCount} sold comps. Using Sold Data.`);
+        return {
+          ...soldData,
+          coverUrl: extractImageUrl(bestCoverItem), // Use active listing image (sold items expire images fast)
+          firstItemId: bestCoverItem?.itemId || null,
+          isSoldBased: true // Flag for UI if needed
+        };
+      }
+    }
 
     return {
       source: "ebay_browse_active_listings",
