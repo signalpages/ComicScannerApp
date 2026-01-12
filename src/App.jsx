@@ -171,8 +171,12 @@ function App() {
       default:
         return (
           <div className="h-full flex flex-col bg-midnight-950 p-6 overflow-y-auto">
-            {/* Header Removed per User Request (Clean UI) */}
-            <div className="h-4"></div>
+            <header className="mt-8 mb-12 text-center">
+              <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">
+                COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
+              </h1>
+              <p className="text-blue-200/70 text-sm">AI Identification & Market Valuation</p>
+            </header>
 
             <div className="grid gap-4">
               <button
