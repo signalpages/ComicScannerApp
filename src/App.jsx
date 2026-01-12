@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState } from "react";
 import Layout from "./components/Layout";
 import CameraView from "./components/CameraView";
 import ResultCard from "./components/ResultCard";
+import CoverImage from "./components/CoverImage";
 import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
@@ -81,7 +82,7 @@ function App() {
       case SCAN_STATE.VERIFY:
         return (
           <VerifyView
-            image={capturedImage || '/default_cover.png'} // Fallback for manual verify path?
+            image={capturedImage} // Pass captured image (could be null manual flow)
             candidates={candidates}
             onSelect={actions.confirmCandidate}
             onRetake={actions.startCamera}
@@ -208,15 +209,14 @@ function App() {
                 <div className="space-y-3">
                   {history.map((item, idx) => (
                     <div key={idx} className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5" onClick={() => actions.openHistoryItem(item)}>
-                      <img
-                        src={item.scanImage || item.marketImageUrl || item.coverUrl || "/default_cover.png"}
-                        className="w-10 h-14 object-cover rounded bg-gray-900"
-                        alt="cover"
-                        onError={(e) => {
-                          e.target.onerror = null;
-                          e.target.src = "/default_cover.png";
-                        }}
-                      />
+                      <div className="w-10 h-14 flex-shrink-0">
+                        <CoverImage
+                          src={item.scanImage || item.marketImageUrl || item.coverUrl}
+                          size="sm"
+                          className="w-full h-full object-cover rounded bg-gray-900"
+                          alt="cover"
+                        />
+                      </div>
                       <div>
                         <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
                         <p className="text-neon-blue text-xs font-mono">${item.value?.typical || 0}</p>

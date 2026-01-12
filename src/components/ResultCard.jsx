@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import CoverImage from "./CoverImage";
 
 const formatRange = (min, max) => {
   if (!min || !max || isNaN(min) || isNaN(max)) return "$-";
@@ -27,7 +28,7 @@ const ResultCard = ({ data, onRescan }) => {
     pricingData.coverUrl ||           // 2. Canonical cover
     data.ebay?.imageUrl ||            // 3. Live eBay result (if fresh scan)
     pricingData.marketImageUrl ||     // 4. Stored eBay image (history)
-    "/default_cover.png";
+    null;
 
   const activeItemUrl = data.ebay?.itemUrl;
 
@@ -72,8 +73,9 @@ const ResultCard = ({ data, onRescan }) => {
                   : "border-transparent opacity-70"
                   }`}
               >
-                <img
-                  src={scanImage || "/default_cover.png"}
+                <CoverImage
+                  src={scanImage}
+                  size="md"
                   className="w-full h-full object-cover"
                   alt="Your scan"
                 />
@@ -91,8 +93,9 @@ const ResultCard = ({ data, onRescan }) => {
                     : "border-transparent opacity-70"
                     }`}
                 >
-                  <img
-                    src={variant.image || "/default_cover.png"}
+                  <CoverImage
+                    src={variant.image}
+                    size="md"
                     className="w-full h-full object-cover"
                     alt={variant.name}
                   />
@@ -107,14 +110,11 @@ const ResultCard = ({ data, onRescan }) => {
 
       {/* Cover */}
       <div className="flex justify-center mb-6">
-        <img
+        <CoverImage
           src={activeImage}
+          size="xl"
           alt="Comic cover"
           className="max-w-[180px] rounded-xl shadow-lg"
-          onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = "/default_cover.png";
-          }}
         />
       </div>
 

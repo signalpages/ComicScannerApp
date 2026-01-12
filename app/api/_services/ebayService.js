@@ -123,6 +123,21 @@ const isKeyIssue = (query) => {
   );
 };
 
+// Merch Heavy Detection (for cleaning up Three Stooges, Star Wars, etc)
+const MERCH_HEAVY = [
+  "three stooges",
+  "star wars",
+  "pokemon",
+  "disney",
+  "mickey",
+  "looney",
+];
+
+const isMerchHeavy = (query) => {
+  const s = norm(query);
+  return MERCH_HEAVY.some((k) => s.includes(k));
+};
+
 /**
  * Title contamination guard:
  * If the query does NOT include some tokens, reject results that DO include them.
@@ -254,16 +269,18 @@ export const getEbayMarketPrice = async (query) => {
     const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
     const skew = values.typical > 0 ? maxPrice / values.typical : 0;
 
+    const isMerch = isMerchHeavy(query);
     const shouldCheckSold =
+      isMerch ||                      // Force check for merch-heavy titles
       isKeyIssue(query) ||            // Force check for potential keys
       values.typical > 15 ||          // Values > $15 (likely key)
       prices.length < 10 ||           // Thin data (rare)
       skew > 3;                       // High variance (likely has slabs)
 
     if (shouldCheckSold) {
-      console.log(`[Pricing] Triggered Sold Check for "${query}" (Typical: $${values.typical}, Count: ${prices.length}, Skew: ${skew.toFixed(1)})`);
+      console.log(`[Pricing] Triggered Sold Check for "${query}" (Merch: ${isMerch}, Typical: $${values.typical}, Count: ${prices.length}, Skew: ${skew.toFixed(1)})`);
 
-      const soldData = await getEbaySoldPrice(query);
+      const soldData = await getEbaySoldPrice(query, { strictMode: isMerch });
 
       if (soldData && soldData.compsCount > 0) {
         console.log(`[Pricing] Found ${soldData.compsCount} sold comps. Using Sold Data.`);

@@ -1,5 +1,6 @@
 
 import React from 'react';
+import CoverImage from '../CoverImage';
 
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
     // Proxy helper removed by User Request to strictly enforce direct eBay URLs
@@ -11,8 +12,8 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
 
             {/* Captured Image Preview */}
             <div className="flex justify-center mb-6">
-                <div className="w-32 h-48 border-2 border-neon-blue rounded-lg overflow-hidden relative shadow-neon">
-                    <img src={image} className="w-full h-full object-cover" alt="Scan" />
+                <div className="w-32 h-48 border-2 border-neon-blue rounded-lg overflow-hidden relative shadow-neon bg-black">
+                    <CoverImage src={image} size="lg" className="w-full h-full object-cover" alt="Scan" />
                     <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-center text-white py-1">YOUR SCAN</div>
                 </div>
             </div>
@@ -27,15 +28,14 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                             onClick={() => onSelect(cand)}
                             className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
                         >
-                            <img
-                                src={cand.coverUrl || "/default_cover.png"}
-                                className="w-16 h-24 object-cover rounded bg-gray-800"
-                                alt="Cover"
-                                onError={(e) => {
-                                    e.target.onerror = null;
-                                    e.target.src = "/default_cover.png";
-                                }}
-                            />
+                            <div className="w-16 h-24 rounded bg-gray-800 overflow-hidden flex-shrink-0">
+                                <CoverImage
+                                    src={cand.coverUrl}
+                                    size="sm"
+                                    className="w-full h-full object-cover"
+                                    alt="Cover"
+                                />
+                            </div>
                             <div className="flex-1">
                                 <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
                                 <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>

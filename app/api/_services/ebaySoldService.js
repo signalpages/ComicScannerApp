@@ -20,8 +20,9 @@ function calculatePercentiles(prices) {
 
 const norm = (s = "") => s.toLowerCase().trim();
 
-export async function getEbaySoldPrice(query) {
-    const cacheKey = `sold_comps_v1:${norm(query)}`;
+export async function getEbaySoldPrice(query, options = {}) {
+    const isStrict = options.strictMode || false;
+    const cacheKey = `sold_comps_v2:${norm(query)}${isStrict ? "_strict" : ""}`;
 
     // 1. Check Cache
     try {
@@ -36,7 +37,18 @@ export async function getEbaySoldPrice(query) {
 
     // 2. Perform Scrape
     try {
-        const q = encodeURIComponent(`${query} -reprint -facsimile -poster -cp`);
+        let q = encodeURIComponent(`${query} -reprint -facsimile -poster -cp`);
+
+        if (isStrict) {
+            // Strict Comic Mode: Force "comic" + "issue" keywords and exclude junk
+            const strictKeywords = `comic issue ${query}`;
+            const exclusions =
+                "-dvd -blu-ray -vhs -poster -print -tshirt -shirt -toy -figure " +
+                "-plush -mug -lobby -photo -autograph -signed -pressbook " +
+                "-lot -set -collection -reprint -facsimile -cp";
+            q = encodeURIComponent(`${strictKeywords} ${exclusions}`);
+        }
+
         const url = `https://www.ebay.com/sch/i.html?_nkw=${q}&LH_Sold=1&LH_Complete=1&_ipg=60`;
 
         const resp = await fetch(url, {
@@ -130,7 +142,10 @@ export async function getEbaySoldPrice(query) {
                 poor: Math.round(finalValues.poor),
                 typical: Math.round(finalValues.typical),
                 nearMint: Math.round(finalValues.nearMint),
-                currency: "USD"
+                typical: Math.round(finalValues.typical),
+                nearMint: Math.round(finalValues.nearMint),
+                currency: "USD",
+                confidence: totalCount < 5 ? 0.4 : 0.9 // Low confidence if data is thin
             },
             compsCount: totalCount,
             rawCount: rawPrices.length,
