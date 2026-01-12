@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useEffect } from "react";
 import Layout from "./components/Layout";
 import CameraView from "./components/CameraView";
 import ResultCard from "./components/ResultCard";
@@ -25,6 +25,28 @@ function App() {
       return JSON.parse(localStorage.getItem('scanHistory') || '[]');
     } catch { return []; }
   }, [state]); // Re-read on state change (e.g. after scan result)
+
+  // -------------------------
+  // Android Back Button Handling
+  // -------------------------
+  useEffect(() => {
+    // If we are NOT at home, push a state so the back button has something to pop
+    if (state !== SCAN_STATE.HOME) {
+      window.history.pushState({ view: state }, "");
+    }
+
+    const handlePopState = (event) => {
+      // If the back button was pressed and we are NOT at home, intercept and go Home
+      if (state !== SCAN_STATE.HOME) {
+        event.preventDefault(); // Hint to browser
+        actions.resetFlow();
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [state, actions]);
+
 
   const renderContent = () => {
     switch (state) {

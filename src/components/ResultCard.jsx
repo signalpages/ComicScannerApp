@@ -188,7 +188,7 @@ const ResultCard = ({ data, onRescan }) => {
         <a
           href={activeItemUrl || `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(
             ebayQuery
-          )}&_sop=12`}
+          )}&_sop=12&LH_Sold=1&LH_Complete=1`}
           target="_blank"
           rel="noopener noreferrer"
           className="glass-panel p-4 rounded-3xl text-center text-blue-300 hover:text-white font-bold"
