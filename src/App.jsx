@@ -152,14 +152,39 @@ function App() {
               <span className="text-4xl">🛑</span>
             </div>
             <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Monthly Limit Reached</h2>
-            <p className="text-gray-400 mb-6 max-w-xs px-4">
+            <p className="text-gray-400 mb-8 max-w-xs px-4">
               {quotaStatus?.message || "You have used your free auto-scans for today."}
               <br /><br />
               <span className="text-white font-bold">Manual Lookup is still free & unlimited.</span>
             </p>
 
-            {/* Device ID for Support */}
-            <div className="mb-6 p-4 bg-black/40 rounded-xl border border-white/5 w-full max-w-xs">
+            {/* Actions Reordered: Upgrade First */}
+            <button
+              onClick={() => IAP.purchaseMonthly()}
+              className="w-full max-w-xs py-4 bg-gradient-to-r from-neon-blue to-blue-600 rounded-xl font-bold text-white shadow-neon mb-3 active:scale-95 transition-transform"
+            >
+              UPGRADE - $2.00 / MONTH
+            </button>
+            <button
+              onClick={() => IAP.purchaseYearly()}
+              className="w-full max-w-xs py-4 bg-white/10 text-white rounded-xl font-bold border border-white/10 active:bg-white/20 transition-colors mb-6"
+            >
+              Go Unlimited - $10.00 / YEAR
+            </button>
+
+            <button
+              onClick={actions.startManualSearch}
+              className="w-full max-w-xs py-4 bg-white/5 text-neon-blue font-bold rounded-xl border border-neon-blue/30 mb-4 active:bg-white/10"
+            >
+              Continue with Manual Lookup
+            </button>
+
+            <button onClick={actions.resetFlow} className="mb-12 text-gray-500 text-sm underline">
+              Back to Home
+            </button>
+
+            {/* Device ID for Support - Moved to Bottom */}
+            <div className="p-4 bg-black/40 rounded-xl border border-white/5 w-full max-w-xs">
               <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Device ID (Support)</p>
               <div className="flex items-center gap-2">
                 <code className="flex-1 text-xs text-neon-blue font-mono bg-black/50 p-2 rounded truncate">
@@ -173,46 +198,9 @@ function App() {
                 </button>
               </div>
               <p className="text-[10px] text-gray-600 mt-2 leading-tight">
-                Send this ID to support if you need an unlimited quota trial.
+                Share this only if support asks for it.
               </p>
             </div>
-
-            <div className="bg-white/5 rounded-xl p-4 w-full max-w-xs mb-8 border border-white/10">
-              <div className="flex justify-between text-sm text-gray-300 mb-2 font-bold">
-                <span>Free Scans Used</span>
-                <span>{quotaStatus?.used || 5} / {quotaStatus?.limit || 5}</span>
-              </div>
-              <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-                <div className="h-full bg-red-500 w-full"></div>
-              </div>
-              <p className="text-xs text-gray-500 mt-3 text-right">
-                Resets on {quotaStatus?.resetAt ? new Date(quotaStatus.resetAt).toLocaleDateString() : 'next month'}
-              </p>
-            </div>
-
-            <button
-              onClick={() => IAP.purchaseMonthly()}
-              className="w-full max-w-xs py-4 bg-gradient-to-r from-neon-blue to-blue-600 rounded-xl font-bold text-white shadow-neon mb-3 active:scale-95 transition-transform"
-            >
-              UPGRADE - $2.00 / MONTH
-            </button>
-            <button
-              onClick={() => IAP.purchaseYearly()}
-              className="w-full max-w-xs py-4 bg-white/10 text-white rounded-xl font-bold border border-white/10 active:bg-white/20 transition-colors"
-            >
-              Go Unlimited - $10.00 / YEAR
-            </button>
-
-            <button
-              onClick={actions.startManualSearch}
-              className="w-full max-w-xs py-4 bg-white/5 text-neon-blue font-bold rounded-xl border border-neon-blue/30 mt-3 active:bg-white/10"
-            >
-              Continue with Manual Lookup
-            </button>
-
-            <button onClick={actions.resetFlow} className="mt-6 text-gray-500 text-sm underline">
-              Back to Home
-            </button>
           </div>
         );
 
