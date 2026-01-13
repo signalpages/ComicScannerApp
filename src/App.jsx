@@ -1,10 +1,12 @@
-import React, { useMemo, useEffect, useState } from "react";
+import React, { useMemo, useEffect, useState, useCallback } from "react";
+import Toast from "./components/Toast";
 import Layout from "./components/Layout";
 import CameraView from "./components/CameraView";
 import ResultCard from "./components/ResultCard";
 import CoverImage from "./components/CoverImage";
 import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
+import SettingsView from "./components/views/SettingsView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
 
 import { IAP } from "./services/iapBridge";
@@ -22,16 +24,19 @@ function App() {
     actions
   } = useScanFlow();
 
+  // Toast State
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((message, type = "info") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 2500);
+  }, []);
+
   const deviceId = getDeviceId();
 
   const copyDeviceId = () => {
     navigator.clipboard.writeText(deviceId);
-    // Simple tooltip or alert would be better, but for now just console or trust user action?
-    // User request: "Copy text (optional helper text)". 
-    // I'll add a temporary "Copied!" state or just assume it works. 
-    // User asked for "We can grant unlimited...". 
-    // Let's add a small toast or just visual feedback.
-    alert(`Device ID Copied:\n${deviceId}`);
+    showToast("Device ID Copied to Clipboard", "success");
   };
 
   // History (read from local storage for Home view)
@@ -207,11 +212,21 @@ function App() {
       case SCAN_STATE.MANUAL_SEARCH:
         return <ManualView onSearch={actions.performManualSearch} onCancel={actions.resetFlow} />;
 
+      case SCAN_STATE.SETTINGS:
+        return <SettingsView onBack={actions.resetFlow} onCopyId={copyDeviceId} />;
+
       case SCAN_STATE.HOME:
       default:
         return (
           <div className="h-full flex flex-col bg-midnight-950 p-6 overflow-y-auto">
-            <header className="mt-8 mb-12 text-center">
+            <header className="mt-8 mb-12 relative text-center">
+              <button
+                onClick={actions.openSettings}
+                className="absolute right-0 top-0 p-2 text-2xl opacity-50 hover:opacity-100 active:scale-90 transition-all"
+                title="Settings"
+              >
+                ⚙️
+              </button>
               <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">
                 COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
               </h1>
@@ -289,13 +304,7 @@ function App() {
               </div>
             )}
 
-            {/* Device ID Footer */}
-            <footer className="mt-12 mb-6 text-center">
-              <p className="text-[10px] text-gray-600 uppercase font-bold mb-1">Device ID</p>
-              <div onClick={copyDeviceId} className="inline-block px-3 py-1 bg-black/30 rounded-full border border-white/5 cursor-pointer active:scale-95 transition-transform">
-                <code className="text-[10px] text-gray-500 font-mono tracking-wider">{deviceId}</code>
-              </div>
-            </footer>
+            {/* Device ID REMOVED from Home as per Trust Pass */}
           </div>
         );
     }
@@ -304,6 +313,9 @@ function App() {
   return (
     <Layout>
       {renderContent()}
+
+      {/* Global Toast Overlay */}
+      <Toast message={toast?.message} type={toast?.type} />
 
       {/* Global Error Toast */}
       {error && error !== 'SCAN_LIMIT_REACHED' && (

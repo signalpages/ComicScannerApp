@@ -1,7 +1,7 @@
 import React from "react";
 import { getDeviceId } from "../../lib/deviceId";
 
-const SettingsView = ({ onBack }) => {
+const SettingsView = ({ onBack, onCopyId }) => {
     return (
         <div className="min-h-full bg-midnight-950 text-white flex flex-col p-6 animate-fade-in pb-20">
             <header className="flex items-center mb-8 gap-4">
@@ -86,8 +86,14 @@ const SettingsView = ({ onBack }) => {
                 </section>
             </div>
 
-            <div className="mt-8 text-center">
-                <p className="text-[10px] text-gray-600 font-mono">ID: {getDeviceId()}</p>
+            <div className="mt-8 text-center pb-8">
+                <p className="text-[10px] text-gray-600 uppercase font-bold mb-1">Device ID</p>
+                <div
+                    onClick={onCopyId}
+                    className="inline-block px-4 py-2 bg-white/5 rounded-full border border-white/5 cursor-pointer active:scale-95 transition-transform"
+                >
+                    <code className="text-[10px] text-gray-500 font-mono tracking-wider">{getDeviceId()}</code>
+                </div>
             </div>
         </div>
     );
