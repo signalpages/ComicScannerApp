@@ -15,8 +15,14 @@ const ResultCard = ({ data, onRescan }) => {
   const { aiData = {}, pricingData = {}, scanImage } = data;
 
   // Confidence determination
-  const confidence = aiData.confidence || pricingData.confidence || 0.8;
-  const isHighConfidence = confidence > 0.7;
+  const matchConfidence = aiData.confidence || pricingData.confidence || 0.8;
+  const coverConfidence = pricingData.coverConfidence || "HIGH";
+
+  const isMatchHigh = matchConfidence > 0.7;
+  const isCoverGood = coverConfidence === "HIGH";
+
+  // Use High Confidence UI only if match is high. Cover issues are handled separately.
+  const isHighConfidence = isMatchHigh;
 
   const [selectedVariant, setSelectedVariant] = useState(null);
 
@@ -52,10 +58,13 @@ const ResultCard = ({ data, onRescan }) => {
   return (
     <div className="h-full flex flex-col p-4 overflow-y-auto">
       {/* Confidence Label */}
-      <div className="flex justify-center mb-2">
-        <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full ${isHighConfidence ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
-          Match Confidence: {isHighConfidence ? 'High' : 'Possible Match'}
+      <div className="flex flex-col items-center justify-center mb-2 gap-1">
+        <span className={`text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded-full ${isMatchHigh ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+          Match Confidence: {isMatchHigh ? 'High' : 'Possible Match'}
         </span>
+        {!isCoverGood && !scanImage && (
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Cover Image Unavailable</span>
+        )}
       </div>
 
       {/* Variant Selector */}
@@ -133,6 +142,8 @@ const ResultCard = ({ data, onRescan }) => {
               ? pricingData.cover_date.split("-")[0]
               : "—")}
         </p>
+
+        {/* Key Issue Badge */}
         {isHighConfidence && aiData.is_key_issue && (
           <p className="text-yellow-400 text-xs mt-2 font-bold">★ KEY ISSUE</p>
         )}

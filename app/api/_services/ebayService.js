@@ -138,6 +138,20 @@ const isMerchHeavy = (query) => {
   return MERCH_HEAVY.some((k) => s.includes(k));
 };
 
+// Terms indicating the image itself is likely bad (collage, grid, etc)
+const IMAGE_JUNK_TERMS = [
+  "montage", "collage", "gallery", "sprite", "thumb", "lot", "set", "collection",
+  "poster", "ticket", "print", "card", "framed", "wall-art", "promo", "advert",
+  "facsimile", "reprint"
+];
+
+const isImageJunk = (title, url) => {
+  const t = norm(title);
+  const u = (url || "").toLowerCase();
+
+  return IMAGE_JUNK_TERMS.some(k => t.includes(k) || u.includes(k));
+};
+
 /**
  * Title contamination guard:
  * If the query does NOT include some tokens, reject results that DO include them.
@@ -182,9 +196,15 @@ const pickBestCoverItem = (items, query) => {
     // 2) Require issue match when we have one
     if (!titleHasIssue(title, issue)) continue;
 
+    // 2) Require issue match when we have one
+    if (!titleHasIssue(title, issue)) continue;
+
     // 3) Must have an image
     const img = extractImageUrl(item);
     if (!img) continue;
+
+    // 3b) Is Image Junk?
+    if (isImageJunk(title, img)) continue;
 
     // 4) Simple similarity scoring
     const tNorm = norm(title);
@@ -210,8 +230,10 @@ const pickBestCoverItem = (items, query) => {
       // ✅ Title contamination guard (keep in fallback too)
       if (rejectContaminatedTitle(title, query)) continue;
 
+      // New: Image Junk Guard
       const img = extractImageUrl(item);
       if (!img) continue;
+      if (isImageJunk(title, img)) continue;
 
       const tNorm = norm(title);
       let score = 0;
@@ -223,6 +245,7 @@ const pickBestCoverItem = (items, query) => {
     }
   }
 
+  // Final Quality Gate validation
   return best?.item || null;
 };
 
@@ -231,8 +254,8 @@ export const getEbayMarketPrice = async (query) => {
     const token = await getEbayToken();
 
     // Search Active Listings
-    // exclude lots, tpb, etc.
-    const q = `${query} -lot -set -tpb -hardcover -facsimile -reprint`;
+    // exclude lots, tpb, etc. + visual junk keys
+    const q = `${query} -lot -set -tpb -hardcover -facsimile -reprint -collage -poster -ticket -framed`;
 
     const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=${encodeURIComponent(
       q
@@ -287,6 +310,7 @@ export const getEbayMarketPrice = async (query) => {
         return {
           ...soldData,
           coverUrl: extractImageUrl(bestCoverItem), // Use active listing image (sold items expire images fast)
+          coverConfidence: bestCoverItem ? "HIGH" : "LOW",
           firstItemId: bestCoverItem?.itemId || null,
           isSoldBased: true // Flag for UI if needed
         };
@@ -296,6 +320,7 @@ export const getEbayMarketPrice = async (query) => {
     return {
       source: "ebay_browse_active_listings",
       coverUrl: extractImageUrl(bestCoverItem),
+      coverConfidence: bestCoverItem ? "HIGH" : "LOW", // Signal to UI
       firstItemId: bestCoverItem?.itemId || null,
       value: {
         ...values,
