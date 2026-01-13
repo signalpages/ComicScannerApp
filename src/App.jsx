@@ -215,7 +215,7 @@ function App() {
               <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">
                 COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
               </h1>
-              <p className="text-blue-200/70 text-sm">AI Identification & Market Valuation</p>
+              <p className="text-blue-200/70 text-sm">Scan any comic to instantly see what it's worth!</p>
             </header>
 
             <div className="grid gap-4">

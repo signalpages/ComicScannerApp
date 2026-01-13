@@ -1,35 +1,49 @@
 import React, { useRef, useState, useEffect } from "react";
 
-const CameraView = ({ onCapture }) => {
+const CameraView = ({ onCapture, onManualFallback }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const streamRef = useRef(null);
 
     const [isScanning, setIsScanning] = useState(false);
-    const [error, setError] = useState("");
+    // error types: 'PERMISSION_DENIED', 'UNAVAILABLE', 'GENERIC'
+    const [errorState, setErrorState] = useState(null);
 
     useEffect(() => {
         let cancelled = false;
 
         async function start() {
             try {
+                // Pre-check permissions if supported (optional polish, but getUserMedia is authority)
+                // Just try to get the stream
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: "environment", width: 1280, height: 720 },
                     audio: false,
                 });
 
-                if (cancelled) return;
+                if (cancelled) {
+                    stream.getTracks().forEach(t => t.stop());
+                    return;
+                }
+
                 streamRef.current = stream;
 
                 if (videoRef.current) {
                     videoRef.current.srcObject = stream;
                     await videoRef.current.play().catch(() => { });
+                    setErrorState(null); // Success
                 }
             } catch (e) {
-                console.error(e);
-                setError(
-                    "Camera failed to start. Check permissions, HTTPS, and device support."
-                );
+                console.error("Camera Error:", e);
+                if (cancelled) return;
+
+                if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+                    setErrorState("PERMISSION_DENIED");
+                } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+                    setErrorState("UNAVAILABLE");
+                } else {
+                    setErrorState("GENERIC");
+                }
             }
         }
 
@@ -37,7 +51,6 @@ const CameraView = ({ onCapture }) => {
 
         return () => {
             cancelled = true;
-            // ✅ stop camera on unmount
             if (streamRef.current) {
                 streamRef.current.getTracks().forEach((t) => t.stop());
             }
@@ -45,56 +58,69 @@ const CameraView = ({ onCapture }) => {
     }, []);
 
     const captureOnce = () => {
-  if (isScanning) return; // hard guard
+        if (isScanning || errorState) return;
 
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+        if (!video || !canvas) return;
 
-    if (video.readyState < 2) {
-        setError("Camera not ready yet. Try again in a second.");
-        return;
-    }
+        if (video.readyState < 2) return;
 
-    setIsScanning(true);
-    setError("");
+        setIsScanning(true);
 
-    try {
-        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        try {
+            const ctx = canvas.getContext("2d", { willReadFrequently: true });
+            const maxW = 720;
+            const scale = Math.min(1, maxW / video.videoWidth);
 
-        // ✅ downscale to keep payload small
-        const maxW = 720;
-        const scale = Math.min(1, maxW / video.videoWidth);
+            canvas.width = Math.floor(video.videoWidth * scale);
+            canvas.height = Math.floor(video.videoHeight * scale);
 
-        canvas.width = Math.floor(video.videoWidth * scale);
-        canvas.height = Math.floor(video.videoHeight * scale);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
 
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.65);
-        console.log("CAPTURE len:", dataUrl.length);
-
-        if (typeof dataUrl === "string" && dataUrl.startsWith("data:image")) {
-        onCapture(dataUrl); // ✅ ONLY ONCE
-        } else {
-        setError("Failed to capture image.");
+            if (typeof dataUrl === "string" && dataUrl.startsWith("data:image")) {
+                onCapture(dataUrl);
+            } else {
+                setErrorState("GENERIC");
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setTimeout(() => setIsScanning(false), 200);
         }
-    } catch (e) {
-        console.error(e);
-        setError("Failed to capture image.");
-    } finally {
-        // tiny delay prevents rapid double taps from firing again instantly
-        setTimeout(() => setIsScanning(false), 200);
-    }
     };
 
+    // --- RENDER ERROR MODAL ---
+    if (errorState) {
+        return (
+            <div className="relative h-[100dvh] w-full bg-midnight-950 flex flex-col items-center justify-center p-8 text-center">
+                <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-6">
+                    <span className="text-3xl">📷</span>
+                </div>
+
+                <h2 className="text-2xl font-black text-white mb-3">Camera Access Needed</h2>
+
+                <p className="text-gray-400 mb-8 max-w-xs">
+                    {errorState === "PERMISSION_DENIED"
+                        ? "Camera access is required. Please enable it in your device settings."
+                        : "We couldn't connect to the camera on this device."
+                    }
+                </p>
+
+                <button
+                    onClick={onManualFallback}
+                    className="w-full max-w-xs py-4 bg-gradient-to-r from-neon-blue to-blue-600 rounded-xl font-bold text-white shadow-neon mb-6 active:scale-95 transition-transform"
+                >
+                    USE MANUAL LOOKUP
+                </button>
+            </div>
+        );
+    }
 
     return (
         <div className="relative h-[100dvh] w-full bg-black overflow-hidden pointer-events-auto">
-            <div className="absolute top-4 left-4 text-[10px] text-white/50 z-50 pointer-events-none">
-                camera-v1-prod
-            </div>
-
             <video
                 ref={videoRef}
                 autoPlay
@@ -102,36 +128,29 @@ const CameraView = ({ onCapture }) => {
                 muted
                 className="w-full h-full object-cover"
             />
-
             <canvas ref={canvasRef} className="hidden" />
 
-            {/* Pinned Bottom Controls */}
+            {/* Controls */}
             <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50 pointer-events-auto">
                 <button
                     onClick={captureOnce}
-                    disabled={isScanning || !!error}
+                    disabled={isScanning}
                     className={`w-20 h-20 rounded-full border-4 shadow-lg active:scale-95 transition-transform ${isScanning ? "bg-gray-700 border-gray-500" : "bg-white border-neon-blue"
                         }`}
-                    title={error ? "Fix camera error first" : "Capture"}
                 />
             </div>
 
-            {isScanning && (
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-blue-400 font-bold z-40">
-                    CAPTURING...
-                </div>
-            )}
+            {/* Manual Fallback Link (Always visible in camera mode too for convenience) */}
+            <button
+                onClick={onManualFallback}
+                className="absolute top-6 right-6 text-white/80 font-bold text-sm bg-black/40 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md active:bg-white/20"
+            >
+                Manual Search
+            </button>
 
-            {error && (
-                <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center text-center p-6 z-40">
-                    <div className="text-red-300 font-bold mb-2">Camera Error</div>
-                    <div className="text-white/80 text-sm max-w-sm">{error}</div>
-                    <button
-                        className="mt-4 px-4 py-2 bg-white/10 text-white rounded"
-                        onClick={() => setError("")}
-                    >
-                        Dismiss
-                    </button>
+            {isScanning && (
+                <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-neon-blue font-bold z-40 animate-pulse">
+                    CAPTURING...
                 </div>
             )}
         </div>

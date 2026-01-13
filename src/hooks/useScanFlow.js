@@ -11,7 +11,8 @@ export const SCAN_STATE = {
   PRICING: "PRICING",
   RESULT: "RESULT",
   MANUAL_SEARCH: "MANUAL_SEARCH",
-  LIMIT: "LIMIT"
+  LIMIT: "LIMIT",
+  SETTINGS: "SETTINGS"
 };
 
 export function useScanFlow() {
@@ -61,6 +62,10 @@ export function useScanFlow() {
     // ✅ also clear capture guard
     captureLockRef.current = false;
     lastCaptureTsRef.current = 0;
+  }, []);
+
+  const openSettings = useCallback(() => {
+    setState(SCAN_STATE.SETTINGS);
   }, []);
 
   const clearError = useCallback(() => setError(null), []);
@@ -289,6 +294,7 @@ export function useScanFlow() {
       resetFlow,
       clearError,
       openHistoryItem,
+      openSettings,
     },
   };
 }
