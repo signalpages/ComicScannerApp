@@ -6,7 +6,7 @@ import CoverImage from "./components/CoverImage";
 import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
-import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
+
 import { IAP } from "./services/iapBridge";
 import { getDeviceId } from "./lib/deviceId";
 
