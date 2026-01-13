@@ -36,14 +36,14 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                             className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
                         >
                             <div className="w-16 h-24 rounded bg-gray-800 overflow-hidden flex-shrink-0">
-                                <CoverImage
-                                    src={cand.coverUrl}
-                                    fallbackSrc={logoFallback}
-                                    size="sm"
-                                    className="w-full h-full object-cover"
-                                    alt="Cover"
-                                />
-                            </div>
+                              <CoverImage
+                                  src={cand.coverUrl || cand.marketImageUrl || image}
+                                  fallbackSrc={logoFallback}
+                                  size="sm"
+                                  className="w-full h-full object-cover"
+                                  alt="Cover"
+                              />
+                              </div>
                             <div className="flex-1">
                                 <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
                                 <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>
