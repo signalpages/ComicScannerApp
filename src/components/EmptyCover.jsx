@@ -11,7 +11,7 @@ const EmptyCover = ({ text = "No Cover", size = "md", className = "", src = null
     if (src) {
         return (
             <div className={`flex flex-col items-center justify-center bg-white/5 border border-white/10 rounded-lg overflow-hidden ${sizeClasses[size] || sizeClasses.md} ${className}`}>
-                <img src={src} className="w-full h-full object-cover opacity-50" alt="Placeholder" />
+                <img src={src} className="w-full h-full object-cover" alt="Placeholder" />
             </div>
         );
     }

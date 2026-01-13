@@ -137,8 +137,7 @@ function App() {
             <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
               <span className="text-4xl">🛑</span>
             </div>
-            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Limit Reached</h2>
-            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Daily Limit Reached</h2>
+            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Monthly Limit Reached</h2>
             <p className="text-gray-400 mb-6 max-w-xs px-4">
               {quotaStatus?.message || "You have used your free auto-scans for today."}
               <br /><br />
@@ -252,7 +251,7 @@ function App() {
                         <div className="w-10 h-14 flex-shrink-0">
                           <CoverImage
                             src={item.scanImage || item.marketImageUrl || item.coverUrl}
-                            fallbackSrc="/pwa-512x512.png"
+                            fallbackSrc="/placeholder-cover.png"
                             size="sm"
                             className="w-full h-full object-cover rounded bg-gray-900"
                             alt="cover"
