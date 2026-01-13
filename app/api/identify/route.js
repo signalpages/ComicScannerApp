@@ -1,5 +1,11 @@
 
 import { redis } from '../_services/redis.js';
+import { Ratelimit } from "@upstash/ratelimit";
+
+const ratelimit = new Ratelimit({
+    redis: redis,
+    limiter: Ratelimit.slidingWindow(10, "60 s"), // 10 scans per minute per IP
+});
 
 export const runtime = 'nodejs'; // Use nodejs for OpenAI client capabilities if needed
 
@@ -41,6 +47,14 @@ export async function POST(request) {
         const devBypass = isDevBypass(request);
 
         if (process.env.UPSTASH_REDIS_REST_URL && !devBypass) {
+            // DOS Protection (IP Rate Limit)
+            const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
+            const { success } = await ratelimit.limit(ip);
+            if (!success) {
+                return Response.json({ ok: false, error: "Too many requests. Please slow down." }, { status: 429 });
+            }
+
+            // Check Entitlement
 
             // Check Entitlement
             const entitlementKey = `entitlement:${deviceId}`;

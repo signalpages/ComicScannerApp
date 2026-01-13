@@ -17,6 +17,7 @@
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.89.0",
     "@tailwindcss/postcss": "^4.1.18",
+    "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.36.0",
     "blockhash-core": "^0.1.0",
     "formidable": "^3.5.4",

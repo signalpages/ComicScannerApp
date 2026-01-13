@@ -1,6 +1,13 @@
 // src/app/api/price/route.js
 import { NextResponse } from "next/server";
 import { getEbayMarketPrice } from "../_services/ebayService";
+import { redis } from "../_services/redis";
+import { Ratelimit } from "@upstash/ratelimit";
+
+const ratelimit = new Ratelimit({
+  redis: redis,
+  limiter: Ratelimit.slidingWindow(20, "60 s"), // 20 price checks per minute
+});
 
 export const runtime = "nodejs";
 
@@ -66,6 +73,15 @@ function isProbablyComicIssueQuery(seriesTitle, issueNumber) {
 
 export async function POST(req) {
   try {
+    // Rate Limit (DOS Protection)
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.NODE_ENV !== "development") {
+      const ip = req.headers.get("x-forwarded-for") ?? "127.0.0.1";
+      const { success } = await ratelimit.limit(ip);
+      if (!success) {
+        return NextResponse.json({ ok: false, error: "Rate limit exceeded" }, { status: 429 });
+      }
+    }
+
     const { getEbayMarketPrice } = await import("../_services/ebayService");
     const body = await req.json().catch(() => ({}));
     const { seriesTitle, issueNumber, editionId, device_id, deviceId } = body;
