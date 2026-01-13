@@ -19,7 +19,6 @@ function App() {
     selectedCandidate,
     pricingResult,
     quotaStatus,
-    quotaStatus,
     actions
   } = useScanFlow();
 
