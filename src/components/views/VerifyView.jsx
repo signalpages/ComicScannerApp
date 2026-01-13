@@ -5,7 +5,7 @@ import CoverImage from '../CoverImage';
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
     // If no scan image is provided, we are in manual lookup mode
     const isManual = !image;
-    const logoFallback = isManual ? "/pwa-512.png" : null;
+    const logoFallback = isManual ? "/pwa-512x512.png" : null;
 
     return (
         <div className="h-full flex flex-col bg-midnight-950 p-4">
