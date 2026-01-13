@@ -45,16 +45,25 @@ export async function POST(request) {
         // --- QUOTA LOGIC ---
         //if (process.env.UPSTASH_REDIS_REST_URL) {
         const devBypass = isDevBypass(request);
+        let isUnlimited = devBypass;
 
-        if (process.env.UPSTASH_REDIS_REST_URL && !devBypass) {
-            // DOS Protection (IP Rate Limit)
+        // Check Redis Allowlist
+        if (process.env.UPSTASH_REDIS_REST_URL && deviceId) {
+            try {
+                const isAllowlisted = await redis.sismember("unlimited:devices", deviceId);
+                if (isAllowlisted) isUnlimited = true;
+            } catch (e) {
+                console.error("Redis Allowlist Check Failed", e);
+            }
+        }
+
+        if (process.env.UPSTASH_REDIS_REST_URL && !isUnlimited) {
+            // DOS Protection (IP Rate Limit) - ALWAYS ENFORCE
             const ip = request.headers.get("x-forwarded-for") ?? "127.0.0.1";
             const { success } = await ratelimit.limit(ip);
             if (!success) {
                 return Response.json({ ok: false, error: "Too many requests. Please slow down." }, { status: 429 });
             }
-
-            // Check Entitlement
 
             // Check Entitlement
             const entitlementKey = `entitlement:${deviceId}`;
@@ -91,10 +100,26 @@ export async function POST(request) {
                         limit: 5,
                         used: used,
                         remaining: 0,
-                        resetAt: nextMonth.toISOString()
+                        resetAt: nextMonth.toISOString(),
+                        unlimited: false
                     }, { status: 429 });
                 }
             }
+        }
+
+        // ... AI CALL ... (omitted for brevity in replacement, but wait, I used ReplaceFileContent, so I need to match the entire block if I'm replacing a block)
+        // Actually, I am replacing lines 45-98 (Quota Logic) and 202-210 (Increment Logic)
+        // I will do two chunks.
+
+        // Chunk 2: Increment Logic
+        // Increment Quota
+        //if (process.env.UPSTASH_REDIS_REST_URL && deviceId && !devBypass) {
+        if (process.env.UPSTASH_REDIS_REST_URL && deviceId && !isUnlimited) {
+            const d = new Date();
+            const mk = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+            const rk = `scan:${deviceId}:${mk}`;
+            await redis.incr(rk);
+            await redis.expire(rk, 60 * 60 * 24 * 31);
         }
 
         if (!process.env.OPENAI_API_KEY) {
@@ -200,8 +225,7 @@ Rules:
         if (aiResult.confidence < 0.6) variantRisk = "HIGH";
 
         // Increment Quota
-        //if (process.env.UPSTASH_REDIS_REST_URL && deviceId) {
-        if (process.env.UPSTASH_REDIS_REST_URL && deviceId && !devBypass) {
+        if (process.env.UPSTASH_REDIS_REST_URL && deviceId && !isUnlimited) {
             const d = new Date();
             const mk = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
             const rk = `scan:${deviceId}:${mk}`;

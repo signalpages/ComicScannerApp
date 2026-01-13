@@ -6,7 +6,9 @@ import CoverImage from "./components/CoverImage";
 import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
+import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
 import { IAP } from "./services/iapBridge";
+import { getDeviceId } from "./lib/deviceId";
 
 function App() {
   const {
@@ -17,8 +19,21 @@ function App() {
     selectedCandidate,
     pricingResult,
     quotaStatus,
+    quotaStatus,
     actions
   } = useScanFlow();
+
+  const deviceId = getDeviceId();
+
+  const copyDeviceId = () => {
+    navigator.clipboard.writeText(deviceId);
+    // Simple tooltip or alert would be better, but for now just console or trust user action?
+    // User request: "Copy text (optional helper text)". 
+    // I'll add a temporary "Copied!" state or just assume it works. 
+    // User asked for "We can grant unlimited...". 
+    // Let's add a small toast or just visual feedback.
+    alert(`Device ID Copied:\n${deviceId}`);
+  };
 
   // History (read from local storage for Home view)
   // History (read from local storage for Home view)
@@ -144,6 +159,25 @@ function App() {
               <span className="text-white font-bold">Manual Lookup is still free & unlimited.</span>
             </p>
 
+            {/* Device ID for Support */}
+            <div className="mb-6 p-4 bg-black/40 rounded-xl border border-white/5 w-full max-w-xs">
+              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Device ID (Support)</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 text-xs text-neon-blue font-mono bg-black/50 p-2 rounded truncate">
+                  {deviceId}
+                </code>
+                <button
+                  onClick={copyDeviceId}
+                  className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded transition-colors"
+                >
+                  COPY
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-600 mt-2 leading-tight">
+                Send this ID to support if you need an unlimited quota trial.
+              </p>
+            </div>
+
             <div className="bg-white/5 rounded-xl p-4 w-full max-w-xs mb-8 border border-white/10">
               <div className="flex justify-between text-sm text-gray-300 mb-2 font-bold">
                 <span>Free Scans Used</span>
@@ -267,6 +301,14 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* Device ID Footer */}
+            <footer className="mt-12 mb-6 text-center">
+              <p className="text-[10px] text-gray-600 uppercase font-bold mb-1">Device ID</p>
+              <div onClick={copyDeviceId} className="inline-block px-3 py-1 bg-black/30 rounded-full border border-white/5 cursor-pointer active:scale-95 transition-transform">
+                <code className="text-[10px] text-gray-500 font-mono tracking-wider">{deviceId}</code>
+              </div>
+            </footer>
           </div>
         );
     }
