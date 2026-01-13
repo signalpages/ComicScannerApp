@@ -3,8 +3,9 @@ import React from 'react';
 import CoverImage from '../CoverImage';
 
 const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
-    // Proxy helper removed by User Request to strictly enforce direct eBay URLs
-    // and stop using complex proxy logic for now.
+    // If no scan image is provided, we are in manual lookup mode
+    const isManual = !image;
+    const logoFallback = isManual ? "/pwa-512.png" : null;
 
     return (
         <div className="h-full flex flex-col bg-midnight-950 p-4">
@@ -13,7 +14,13 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
             {/* Captured Image Preview */}
             <div className="flex justify-center mb-6">
                 <div className="w-32 h-48 border-2 border-neon-blue rounded-lg overflow-hidden relative shadow-neon bg-black">
-                    <CoverImage src={image} size="lg" className="w-full h-full object-cover" alt="Scan" />
+                    <CoverImage
+                        src={image}
+                        fallbackSrc={logoFallback}
+                        size="lg"
+                        className="w-full h-full object-cover"
+                        alt="Scan"
+                    />
                     <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-center text-white py-1">YOUR SCAN</div>
                 </div>
             </div>
@@ -31,6 +38,7 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                             <div className="w-16 h-24 rounded bg-gray-800 overflow-hidden flex-shrink-0">
                                 <CoverImage
                                     src={cand.coverUrl}
+                                    fallbackSrc={logoFallback}
                                     size="sm"
                                     className="w-full h-full object-cover"
                                     alt="Cover"
