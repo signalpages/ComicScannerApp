@@ -20,13 +20,6 @@ export async function GET(request) {
             year: null,
             publisher: "Unknown"
         },
-        {
-            editionId: `manual-${title}-${issue || '1'}-B`,
-            displayName: `${title} #${issue || '1'} (Variant)`,
-            coverUrl: null,
-            year: null,
-            publisher: "Unknown"
-        }
     ];
 
     return Response.json({

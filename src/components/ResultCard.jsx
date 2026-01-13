@@ -121,6 +121,7 @@ const ResultCard = ({ data, onRescan }) => {
       <div className="flex justify-center mb-6">
         <CoverImage
           src={activeImage}
+          fallbackSrc={!scanImage ? "/pwa-512x512.png" : null}
           size="xl"
           alt="Comic cover"
           className="max-w-[180px] rounded-xl shadow-lg"

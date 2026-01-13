@@ -36,6 +36,13 @@ function App() {
     actions.resetFlow();
   };
 
+  const deleteHistoryItem = (itemToDelete) => {
+    if (!confirm(`Delete scan "${itemToDelete.displayName}"?`)) return;
+    const newH = history.filter(i => i.timestamp !== itemToDelete.timestamp);
+    localStorage.setItem("scanHistory", JSON.stringify(newH));
+    setHistoryVersion(v => v + 1);
+  };
+
   // -------------------------
   // Android Back Button Handling
   // -------------------------
@@ -131,7 +138,12 @@ function App() {
               <span className="text-4xl">🛑</span>
             </div>
             <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Limit Reached</h2>
-            <p className="text-gray-400 mb-6 max-w-xs">{quotaStatus?.message || "You have used all your free scans for this month."}</p>
+            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Daily Limit Reached</h2>
+            <p className="text-gray-400 mb-6 max-w-xs px-4">
+              {quotaStatus?.message || "You have used your free auto-scans for today."}
+              <br /><br />
+              <span className="text-white font-bold">Manual Lookup is still free & unlimited.</span>
+            </p>
 
             <div className="bg-white/5 rounded-xl p-4 w-full max-w-xs mb-8 border border-white/10">
               <div className="flex justify-between text-sm text-gray-300 mb-2 font-bold">
@@ -157,6 +169,13 @@ function App() {
               className="w-full max-w-xs py-4 bg-white/10 text-white rounded-xl font-bold border border-white/10 active:bg-white/20 transition-colors"
             >
               Go Unlimited - $10.00 / YEAR
+            </button>
+
+            <button
+              onClick={actions.startManualSearch}
+              className="w-full max-w-xs py-4 bg-white/5 text-neon-blue font-bold rounded-xl border border-neon-blue/30 mt-3 active:bg-white/10"
+            >
+              Continue with Manual Lookup
             </button>
 
             <button onClick={actions.resetFlow} className="mt-6 text-gray-500 text-sm underline">
@@ -207,22 +226,45 @@ function App() {
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {history.map((item, idx) => (
-                    <div key={idx} className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5" onClick={() => actions.openHistoryItem(item)}>
-                      <div className="w-10 h-14 flex-shrink-0">
-                        <CoverImage
-                          src={item.scanImage || item.marketImageUrl || item.coverUrl}
-                          size="sm"
-                          className="w-full h-full object-cover rounded bg-gray-900"
-                          alt="cover"
-                        />
+                  {history.map((item, idx) => {
+                    // Long press logic
+                    let pressTimer = null;
+                    const startPress = () => {
+                      pressTimer = setTimeout(() => {
+                        deleteHistoryItem(item);
+                      }, 800);
+                    };
+                    const cancelPress = () => {
+                      if (pressTimer) clearTimeout(pressTimer);
+                    };
+
+                    return (
+                      <div
+                        key={idx}
+                        className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5 active:bg-red-500/10 transition-colors select-none"
+                        onClick={() => actions.openHistoryItem(item)}
+                        onMouseDown={startPress}
+                        onMouseUp={cancelPress}
+                        onMouseLeave={cancelPress}
+                        onTouchStart={startPress}
+                        onTouchEnd={cancelPress}
+                      >
+                        <div className="w-10 h-14 flex-shrink-0">
+                          <CoverImage
+                            src={item.scanImage || item.marketImageUrl || item.coverUrl}
+                            fallbackSrc="/pwa-512x512.png"
+                            size="sm"
+                            className="w-full h-full object-cover rounded bg-gray-900"
+                            alt="cover"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
+                          <p className="text-neon-blue text-xs font-mono">${item.value?.typical || 0}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
-                        <p className="text-neon-blue text-xs font-mono">${item.value?.typical || 0}</p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
