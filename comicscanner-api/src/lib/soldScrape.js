@@ -14,11 +14,11 @@ function isSlabTitle(title) {
 function rejectTitle(title) {
     const t = title.toLowerCase();
     const bad = [
-        "lot", "bundle", "set", "run", "collection",
+        "lot", "bundle", "set", "run", "collection", "pack",
         "tpb", "trade paperback", "graphic novel", "omnibus",
-        "facsimile", "reprint",
+        "facsimile", "reprint", "re-print", "golden record",
         "digital", "poster", "print", "cover only", "page", "ad",
-        "framed", "ticket"
+        "framed", "ticket", "sticker", "magnet", "funko", "pop"
     ];
     return bad.some(w => t.includes(w));
 }
@@ -42,7 +42,7 @@ function percentile(sorted, p) {
     return sorted[lo] * (1 - w) + sorted[hi] * w;
 }
 
-export async function soldComps({ query, cacheKey }) {
+export async function soldComps({ query, cacheKey, issueNumber }) {
     const cached = await redis.get(cacheKey);
     if (cached) return cached;
 
@@ -50,6 +50,7 @@ export async function soldComps({ query, cacheKey }) {
     url.searchParams.set("_nkw", query);
     url.searchParams.set("LH_Sold", "1");
     url.searchParams.set("LH_Complete", "1");
+    url.searchParams.set("rt", "nc"); // No correct spelling auto-redirects
 
     const res = await fetch(url.toString(), {
         headers: {
@@ -66,7 +67,6 @@ export async function soldComps({ query, cacheKey }) {
     const html = await res.text();
 
     // Light parsing: pull item blocks and prices.
-    // This is intentionally simple; good enough to restore functionality.
     const titleMatches = [...html.matchAll(/<div class="s-item__title">([\s\S]*?)<\/div>/g)]
         .map(m => m[1].replace(/<[^>]+>/g, "").trim())
         .filter(Boolean);
@@ -76,32 +76,65 @@ export async function soldComps({ query, cacheKey }) {
         .map(normalizeMoney)
         .filter(v => v !== null);
 
-    // Pair titles with prices by index heuristics (imperfect but workable)
     const pairs = [];
     const n = Math.min(titleMatches.length, priceMatches.length);
+
+    // Strict Guardrails
+    const targetIssue = issueNumber ? String(issueNumber).replace(/^#/, "") : null;
+
     for (let i = 0; i < n; i++) {
         const title = titleMatches[i];
         const price = priceMatches[i];
         if (!title || price == null) continue;
+
+        // 1. Title Exclusion
         if (rejectTitle(title)) continue;
+
+        // 2. Issue Number Verification (if provided)
+        if (targetIssue) {
+            // Look for isolated number in title matching start, or #NUMBER, or space NUMBER space
+            // Simple heuristic check
+            const normTitle = title.toLowerCase().replace(/[^\w#.]/g, " ");
+            const issuePatt = new RegExp(`(?:^|\\s|#)${targetIssue}(?:\\s|$)`);
+            if (!issuePatt.test(normTitle)) continue;
+        }
+
         pairs.push({ title, price, slab: isSlabTitle(title) });
     }
 
-    const raw = trimOutliers(pairs.filter(p => !p.slab).map(p => p.price));
-    const slabs = trimOutliers(pairs.filter(p => p.slab).map(p => p.price));
+    // 3. Variant Check for Raw
+    // If it's not a slab, reject it if it looks like a variant or has a high numeric grade in title
+    const cleanPairs = pairs.filter(p => {
+        if (p.slab) return true; // Slabs can represent variants if we just want "slab price"
+
+        const t = p.title.toLowerCase();
+        if (t.includes("variant") || t.includes("virgin") || t.includes("foil") ||
+            t.includes("exclusive") || t.includes("signed") || t.includes("sketch")) return false;
+
+        // Reject raw books claiming high grades (9.8, 9.6 etc) - likely slab spam or overpriced raw
+        if (/\b9\.\d\b/.test(t)) return false;
+
+        return true;
+    });
+
+    const raw = trimOutliers(cleanPairs.filter(p => !p.slab).map(p => p.price));
+    const slabs = trimOutliers(cleanPairs.filter(p => p.slab).map(p => p.price));
 
     const rawSorted = raw.slice().sort((a, b) => a - b);
     const slabSorted = slabs.slice().sort((a, b) => a - b);
 
+    // Min sample size threshold
+    const MIN_SAMPLE = 3;
+
     const result = {
         raw: {
-            soft: percentile(rawSorted, 0.25),
-            typical: percentile(rawSorted, 0.50),
-            nearMint: percentile(rawSorted, 0.75),
+            soft: rawSorted.length >= MIN_SAMPLE ? percentile(rawSorted, 0.25) : null,
+            typical: rawSorted.length >= MIN_SAMPLE ? percentile(rawSorted, 0.50) : null,
+            nearMint: rawSorted.length >= MIN_SAMPLE ? percentile(rawSorted, 0.75) : null,
             count: rawSorted.length,
         },
         slabs: {
-            typical: percentile(slabSorted, 0.50),
+            typical: slabSorted.length >= MIN_SAMPLE ? percentile(slabSorted, 0.50) : null,
             count: slabSorted.length,
         }
     };

@@ -18,7 +18,7 @@ export const apiFetch = async (url, options = {}) => {
     // --------------------------------------------------------
     const isNative = Capacitor.isNativePlatform();
     // Vercel URL hidden from UI, used ONLY internally in native environment
-    const PROD_API_BASE = "https://comic-scanner-app-three.vercel.app";
+    const PROD_API_BASE = "https://comicscanner-api.vercel.app";
 
     // If native (Android/iOS), force full URL. Otherwise use relative (proxy).
     let finalUrl = url;
