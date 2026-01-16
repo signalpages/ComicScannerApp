@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* "Swiss Style" Typography Tweaks */
+  --font-display: 'Söhne', 'Inter', 'sans-serif';
+  --font-body: 'Söhne', 'Inter', 'sans-serif';
+
+  --tracking-tighter: -0.04em;
+  --tracking-tight: -0.02em;
+
+  /* Colors defined in tailwind.config.js but we keep some vars if needed for raw css */
+  --color-glass-border: rgba(255, 255, 255, 0.08);
+  --color-glass-bg: rgba(20, 20, 40, 0.4);
+}
+
+body {
+  @apply bg-midnight-900 text-white min-h-screen font-body overflow-x-hidden;
+  background-image:
+    radial-gradient(circle at 10% 20%, rgba(188, 19, 254, 0.15) 0%, transparent 40%),
+    radial-gradient(circle at 90% 80%, rgba(0, 243, 255, 0.15) 0%, transparent 40%);
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  @apply font-display tracking-tighter font-bold;
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  @apply bg-glass-bg backdrop-blur-xl border border-glass-border shadow-xl;
+}
+
+.glass-input {
+  @apply bg-white/5 border border-white/10 backdrop-blur-md focus:border-neon-blue/50 focus:bg-white/10 transition-all outline-none;
+}
+
+.text-gradient {
+  @apply bg-gradient-to-r from-neon-blue to-neon-purple bg-clip-text text-transparent;
+}
