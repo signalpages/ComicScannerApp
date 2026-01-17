@@ -13,8 +13,10 @@ export async function POST(req) {
     const anonRes = await requireAnonId(req);
     if (!anonRes.ok) return Response.json(anonRes.body, { status: anonRes.status });
 
-    const quota = await enforceMonthlyQuota(anonRes.anon);
-    if (!quota.ok) return Response.json(quota.body, { status: quota.status });
+    // CS-203: Manual lookup is free. Pricing endpoint is used for both Scan results and Manual.
+    // Quota is enforced at /api/identify (Scanning) or client-side gating.
+    // const quota = await enforceMonthlyQuota(anonRes.anon);
+    // if (!quota.ok) return Response.json(quota.body, { status: quota.status });
 
     let json;
     try {
@@ -23,20 +25,35 @@ export async function POST(req) {
         return Response.json({ ok: false, code: "BAD_JSON", error: "Invalid JSON body" }, { status: 400 });
     }
 
-    const parsed = Body.safeParse(json);
-    if (!parsed.success) {
-        return Response.json({ ok: false, code: "BAD_REQUEST", error: "Invalid request body" }, { status: 400 });
-    }
-
+    // CS-056: Soft Fail for Pricing
     try {
+        const parsed = Body.safeParse(json);
+        if (!parsed.success) {
+            // Invalid params? Just say price unavailable.
+            console.warn("Pricing Bad Request", parsed.error);
+            return Response.json({ ok: true, available: false, value: { typical: null } });
+        }
+
         const out = await priceComic({
             seriesTitle: parsed.data.seriesTitle,
             issueNumber: parsed.data.issueNumber,
             year: parsed.data.year, // CS-027: Pass year
         });
 
-        return Response.json({ ok: true, ...out });
+        return Response.json({
+            ok: true,
+            available: true,
+            ...out,
+            backendVersion: process.env.VERCEL_GIT_COMMIT_SHA || "dev"
+        });
     } catch (e) {
-        return Response.json({ ok: false, code: "PRICE_FAILED", error: String(e?.message || e) }, { status: 500 });
+        console.warn("Pricing Failed (Soft)", e);
+        return Response.json({
+            ok: true,
+            available: false,
+            value: { typical: null },
+            error: String(e.message),
+            backendVersion: process.env.VERCEL_GIT_COMMIT_SHA || "dev"
+        });
     }
 }

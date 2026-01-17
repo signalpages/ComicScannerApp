@@ -1,5 +1,6 @@
 import { getDeviceId } from "./deviceId";
 import { Capacitor } from "@capacitor/core";
+import { API_BASE_URL } from "../config"; // CS-206
 
 /**
  * Wrapper around fetch to ensure deviceId is always included
@@ -14,6 +15,7 @@ export const apiFetch = async (url, options = {}) => {
 
   const defaultHeaders = {
     "Content-Type": "application/json",
+    "x-install-id": getDeviceId(), // SS-004: Always send canonical ID
     ...(isEntitled ? { "x-entitlement-status": "active" } : {})
   };
 
@@ -21,28 +23,18 @@ export const apiFetch = async (url, options = {}) => {
   // ✅ Native-safe API base resolution (Hardened)
   // --------------------------------------------------------
   const isNative = Capacitor.isNativePlatform();
-  const PROD_API_BASE = "https://comicscanner-api.vercel.app";
 
-  let finalUrl = url;
-
-  // Logic: 
-  // 1. If absolute URL (http/https), use as-is.
-  // 2. If native, force PROD_API_BASE + normalized path.
-  // 3. If web, allow relative paths (browser handles proxy/origin).
-
-  const isAbsolute = /^https?:\/\//i.test(url);
-
-  if (isNative && !isAbsolute) {
-    // Normalize path to ensure leading slash
-    const path = url.startsWith("/") ? url : `/${url}`;
-    finalUrl = `${PROD_API_BASE}${path}`;
-  }
+  // CS-206: Force Absolute URL
+  const finalUrl = url.startsWith('http')
+    ? url
+    : new URL(url, API_BASE_URL).toString();
 
   // --------------------------------------------------------
   // ✅ Logging for Diagnostics
   // --------------------------------------------------------
   if (isNative) {
-    console.log(`[API REQUEST] ${finalUrl} (Original: ${url})`);
+    console.log(`[API REQUEST] ${finalUrl}`);
+    console.log(`[API ORIGIN] ${isNative ? "Native" : "Web"}`);
   }
 
   const config = {

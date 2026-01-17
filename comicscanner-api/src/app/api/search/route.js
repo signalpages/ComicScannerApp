@@ -47,7 +47,11 @@ export async function GET(req) {
         // If still 0, client will show "No matches found", but we tried our best.
         // We could define a dedicated error if needed, but empty list is standard "No matches".
 
-        return Response.json({ ok: true, candidates });
+        return Response.json({
+            ok: true,
+            candidates,
+            backendVersion: process.env.VERCEL_GIT_COMMIT_SHA || "dev"
+        });
 
     } catch (error) {
         console.error("Search API Error:", error);

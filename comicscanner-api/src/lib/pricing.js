@@ -1,6 +1,17 @@
 import { browseSearch } from "./ebayBrowse";
 import { soldComps } from "./soldScrape";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+// SS-008: Pricing Cache TTL (7 days)
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+
+function normalizeKey(series, issue) {
+    const s = (series || "").toLowerCase().replace(/[^\w]+/g, "_").replace(/^_+|_+$/g, "");
+    const i = (issue || "").toString().toLowerCase().replace(/[^\w.]+/g, "");
+    return `pricing:${s}|${i}`;
+}
+
+// ... helper functions (baseExclusions, buildQuery, extractCandidatePrices, percentile, trim) same as before ...
 function baseExclusions() {
     return [
         "-lot", "-bundle", "-set", "-run", "-collection",
@@ -14,8 +25,7 @@ function baseExclusions() {
 function buildQuery(seriesTitle, issueNumber) {
     const t = (seriesTitle || "").trim();
     const issue = (issueNumber || "").toString().trim();
-    const q = `"${t}" #${issue} comic ${baseExclusions()}`;
-    return q;
+    return `"${t}" #${issue} comic ${baseExclusions()}`;
 }
 
 function extractCandidatePrices(browseJson, issueNumber) {
@@ -27,15 +37,10 @@ function extractCandidatePrices(browseJson, issueNumber) {
     for (const it of items) {
         const p = Number(it?.price?.value);
         if (!Number.isFinite(p) || p <= 1) continue;
-
         const t = (it.title || "").toLowerCase();
-
-        // Post-filter browse results for keywords we assume standard (raw) shouldn't have
-        // (Browse API doesn't support complex exclusions well, so we double check)
         if (t.includes("variant") || t.includes("virgin") || t.includes("foil") || t.includes("signed")) continue;
-        if (/\b9\.\d\b/.test(t)) continue; // Skip graded noise in raw query
+        if (/\b9\.\d\b/.test(t)) continue;
 
-        // Issue match check
         const normTitle = t.replace(/[^\w#.]/g, " ");
         const issuePatt = new RegExp(`(?:^|\\s|#)${targetIssue}(?:\\s|$)`);
         if (!issuePatt.test(normTitle)) continue;
@@ -43,7 +48,6 @@ function extractCandidatePrices(browseJson, issueNumber) {
         prices.push(p);
         if (!imageUrl && it?.image?.imageUrl) imageUrl = it.image.imageUrl;
     }
-
     prices.sort((a, b) => a - b);
     return { prices, imageUrl, count: prices.length };
 }
@@ -58,34 +62,48 @@ function percentile(sorted, p) {
     return sorted[lo] * (1 - w) + sorted[hi] * w;
 }
 
-function trim(sorted) {
-    if (sorted.length < 5) return sorted; // Require min 5 to trim
-    const drop = Math.floor(sorted.length * 0.1); // 10% trim
-    return sorted.slice(drop, sorted.length - drop);
-}
-
 export async function priceComic({ seriesTitle, issueNumber, year }) {
     const start = Date.now();
+    const cacheKey = normalizeKey(seriesTitle, issueNumber);
+
+    // 1. Check Cache (SS-008)
+    try {
+        const { data } = await supabaseAdmin
+            .from('pricing_cache')
+            .select('*')
+            .eq('key', cacheKey)
+            .single();
+
+        if (data) {
+            const age = Date.now() - new Date(data.computed_at).getTime();
+            if (age < CACHE_TTL_MS) {
+                console.log(`[METRICS] type=pricing status=hit key=${cacheKey}`);
+                return data.estimate;
+            }
+        }
+    } catch (e) {
+        console.warn("Pricing Cache Read Error", e);
+    }
+
+    // 2. Compute (Ladder)
     let stage = "none";
     let method = "none";
     let resultValue = { typical: null, soft: null, slabs: null };
     let resultEbay = { imageUrl: null };
     let count = 0;
 
-    // Helper to log metrics
     const logMetric = (s, m, c) => {
         const duration = Date.now() - start;
         console.log(`[METRICS] type=pricing series="${seriesTitle}" issue="${issueNumber}" stage=${s} method=${m} results=${c} duration=${duration}ms`);
     };
 
-    // 1. SOLD STRICT (Title + Issue + Year)
-    // Only if year is provided and reasonable
+    // A. SOLD STRICT
     if (year && String(year).match(/^(19|20)\d{2}$/)) {
-        const strictQuery = `${seriesTitle} #${issueNumber} ${year} comic`;
-        const cacheKey = `sold:${seriesTitle}:${issueNumber}:${year}`.toLowerCase();
-
         try {
-            const sold = await soldComps({ query: strictQuery, cacheKey, issueNumber });
+            const strictQuery = `${seriesTitle} #${issueNumber} ${year} comic`;
+            // Redis internal caching for scrapes still applies inside soldComps if enabled, 
+            // but we rely on Supabase as the master cache for "Pricing Result"
+            const sold = await soldComps({ query: strictQuery, issueNumber });
             if (sold?.raw?.count >= 10) {
                 stage = "sold_strict";
                 method = "scrape";
@@ -95,74 +113,69 @@ export async function priceComic({ seriesTitle, issueNumber, year }) {
                     slabs: sold.slabs.typical ? Math.round(sold.slabs.typical) : null,
                 };
                 count = sold.raw.count;
-                logMetric(stage, method, count);
-                return { value: resultValue, ebay: resultEbay };
             }
-        } catch (e) {
-            console.warn("Pricing Strict Error:", e);
-        }
+        } catch (e) { console.warn("Strict Error", e); }
     }
 
-    // 2. SOLD RELAXED (Title + Issue)
-    const relaxedQuery = `${seriesTitle} #${issueNumber} comic`;
-    const relaxedCacheKey = `sold:${seriesTitle}:${issueNumber}`.toLowerCase();
-
-    try {
-        const sold = await soldComps({ query: relaxedQuery, cacheKey: relaxedCacheKey, issueNumber });
-        if (sold?.raw?.count >= 6) {
-            stage = "sold_relaxed";
-            method = "scrape";
-            resultValue = {
-                typical: sold.raw.typical ? Math.round(sold.raw.typical) : null,
-                soft: sold.raw.soft ? Math.round(sold.raw.soft) : null,
-                slabs: sold.slabs.typical ? Math.round(sold.slabs.typical) : null,
-            };
-            count = sold.raw.count;
-            logMetric(stage, method, count);
-            return { value: resultValue, ebay: resultEbay };
-        }
-    } catch (e) {
-        console.warn("Pricing Relaxed Error:", e);
+    // B. SOLD RELAXED (if A failed)
+    if (stage === "none") {
+        try {
+            const relaxedQuery = `${seriesTitle} #${issueNumber} comic`;
+            const sold = await soldComps({ query: relaxedQuery, issueNumber });
+            if (sold?.raw?.count >= 6) {
+                stage = "sold_relaxed";
+                method = "scrape";
+                resultValue = {
+                    typical: sold.raw.typical ? Math.round(sold.raw.typical) : null,
+                    soft: sold.raw.soft ? Math.round(sold.raw.soft) : null,
+                    slabs: sold.slabs.typical ? Math.round(sold.slabs.typical) : null,
+                };
+                count = sold.raw.count;
+            }
+        } catch (e) { console.warn("Relaxed Error", e); }
     }
 
-    // 3. ACTIVE LISTINGS (Browse API)
-    // Fallback if sold data is thin.
-    // We treat active "average" as a "typical" price, but maybe discount it slightly or just label it?
-    // The requirement says: "compute median asking price (label clearly)" -> we'll return it as typical but maybe frontend handles usage?
-    // For now, mapping to typical/soft structure.
+    // C. ACTIVE LISTINGS (if A & B failed)
+    if (stage === "none") {
+        try {
+            const q = buildQuery(seriesTitle, issueNumber);
+            const browse = await browseSearch({ q, limit: 50 });
+            const { prices, imageUrl, count: activeCount } = extractCandidatePrices(browse, issueNumber);
+            if (imageUrl) resultEbay.imageUrl = imageUrl;
 
-    try {
-        const q = buildQuery(seriesTitle, issueNumber);
-        const browse = await browseSearch({ q, limit: 50 });
-        const { prices, imageUrl, count: activeCount } = extractCandidatePrices(browse, issueNumber);
-
-        if (imageUrl) resultEbay.imageUrl = imageUrl;
-
-        if (activeCount >= 10) {
-            stage = "active";
-            method = "api";
-            // Simple percentile stats on asking prices
-            const typical = percentile(prices, 0.50);
-            const soft = percentile(prices, 0.25);
-
-            resultValue = {
-                typical: typical ? Math.round(typical) : null,
-                soft: soft ? Math.round(soft) : null,
-                slabs: null // Active scan doesn't separate slabs reliably in this helper yet
-            };
-            count = activeCount;
-            logMetric(stage, method, count);
-            return { value: resultValue, ebay: resultEbay };
-        }
-
-    } catch (e) {
-        console.warn("Pricing Active Error:", e);
+            if (activeCount >= 10) {
+                stage = "active";
+                method = "api";
+                const typical = percentile(prices, 0.50);
+                const soft = percentile(prices, 0.25);
+                resultValue = {
+                    typical: typical ? Math.round(typical) : null,
+                    soft: soft ? Math.round(soft) : null,
+                    slabs: null
+                };
+                count = activeCount;
+            }
+        } catch (e) { console.warn("Active Error", e); }
     }
 
-    // 4. UNAVAILABLE
-    logMetric("none", "none", 0);
-    return {
-        value: { typical: null, soft: null, slabs: null },
-        ebay: resultEbay
+    // 3. Final Result Construction
+    const finalResult = {
+        value: resultValue,
+        ebay: resultEbay,
+        meta: { stage, method, count, computed_at: new Date().toISOString() }
     };
+    logMetric(stage, method, count);
+
+    // 4. Update Cache (if meaningful result)
+    if (stage !== "none") {
+        try {
+            await supabaseAdmin.from('pricing_cache').upsert({
+                key: cacheKey,
+                estimate: finalResult,
+                computed_at: new Date().toISOString()
+            });
+        } catch (e) { console.warn("Pricing Cache Write Error", e); }
+    }
+
+    return finalResult;
 }

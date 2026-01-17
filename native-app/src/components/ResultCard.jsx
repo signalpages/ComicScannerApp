@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import CoverImage from "./CoverImage";
+import { formatCurrency } from "../utils/currency";
 
 const formatRange = (min, max) => {
   if (!min || !max || isNaN(min) || isNaN(max)) return "$-";
@@ -113,7 +114,7 @@ const ResultCard = ({ data, onRescan }) => {
           <div className="text-center">
             <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Estimated Value</p>
             <div className="text-5xl font-black text-white tracking-tighter drop-shadow-neon">
-              ${priceValue}
+              {formatCurrency(priceValue)}
             </div>
             <p className="text-[10px] text-gray-500 mt-2">Based on {priceSourceType}</p>
           </div>

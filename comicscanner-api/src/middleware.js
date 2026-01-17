@@ -7,7 +7,7 @@ export function middleware(request) {
     const headers = new Headers({
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, x-anon-id, x-dev-bypass, deviceId",
+        "Access-Control-Allow-Headers": "Content-Type, x-anon-id, x-dev-bypass, deviceId, x-install-id, x-entitlement-status",
     });
 
     // Handle simple preflight

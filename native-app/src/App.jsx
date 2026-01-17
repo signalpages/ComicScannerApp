@@ -8,10 +8,14 @@ import ManualView from "./components/views/ManualView";
 import VerifyView from "./components/views/VerifyView";
 import SettingsView from "./components/views/SettingsView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
+import { formatCurrency } from "./utils/currency";
 
 import { IAP } from "./services/iapBridge";
 import { getDeviceId, initializeDeviceId } from "./lib/deviceId";
 import { App as CapacitorApp } from '@capacitor/app';
+import PaywallView from "./components/views/PaywallView";
+
+import { API_BASE_URL } from "./config"; // CS-206
 
 function App() {
   const {
@@ -22,8 +26,22 @@ function App() {
     selectedCandidate,
     pricingResult,
     quotaStatus,
+    history, // SS-007
     actions
   } = useScanFlow();
+
+  // CS-205: Hidden Debug Footer
+  const [debugClicks, setDebugClicks] = useState(0);
+  const [showDebug, setShowDebug] = useState(false);
+
+  const handleLogoClick = () => {
+    setDebugClicks(p => {
+      const next = p + 1;
+      if (next >= 5) setShowDebug(true);
+      return next;
+    });
+    setTimeout(() => setDebugClicks(0), 2000); // Reset if too slow
+  };
 
   // Toast State
   const [toast, setToast] = useState(null);
@@ -44,6 +62,14 @@ function App() {
     // For now, we just ensure IAP bridge is ready. 
     // In a real app, we'd enable a "Premium" mode state here.
     // The apiFetch logic will pull from IAP.isEntitled() dynamically.
+
+    // 3. CS-063: Deep Linking / Rehydration
+    const params = new URLSearchParams(window.location.search);
+    const scanId = params.get("scanId");
+    if (scanId) {
+      console.log("[App] Found scanId in URL:", scanId);
+      actions.loadScanById(scanId);
+    }
   }, []);
 
   const copyDeviceId = () => {
@@ -51,28 +77,10 @@ function App() {
     showToast("Device ID Copied to Clipboard", "success");
   };
 
-  // History (read from local storage for Home view)
-  // History (read from local storage for Home view)
-  const [historyVersion, setHistoryVersion] = useState(0);
-  const history = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem('scanHistory') || '[]');
-    } catch { return []; }
-  }, [state, historyVersion]); // Re-read on state change or manual version bump
+  // History is managed by useScanFlow (SS-007)
+  // deleteHistoryItem removed (implemented in hook actions if needed, or disabled for now)
 
-  const clearHistory = () => {
-    if (!confirm("Clear all scan history?")) return;
-    localStorage.removeItem("scanHistory");
-    setHistoryVersion(v => v + 1);
-    actions.resetFlow();
-  };
 
-  const deleteHistoryItem = (itemToDelete) => {
-    if (!confirm(`Delete scan "${itemToDelete.displayName}"?`)) return;
-    const newH = history.filter(i => i.timestamp !== itemToDelete.timestamp);
-    localStorage.setItem("scanHistory", JSON.stringify(newH));
-    setHistoryVersion(v => v + 1);
-  };
 
   // -------------------------
   // Android Back Button Handling
@@ -105,9 +113,18 @@ function App() {
 
     // Also keep history state handling for browser testing
     if (state === SCAN_STATE.HOME) {
-      window.history.replaceState({ view: "home" }, "");
+      const url = new URL(window.location);
+      url.search = "";
+      window.history.replaceState({ view: "home" }, "", url);
     } else {
-      window.history.pushState({ view: state }, "");
+      // CS-063: Deep Link Persistence
+      const url = new URL(window.location);
+      if (state === SCAN_STATE.RESULT && selectedCandidate?.id) {
+        url.searchParams.set("scanId", selectedCandidate.id);
+      } else {
+        url.searchParams.delete("scanId");
+      }
+      window.history.pushState({ view: state }, "", url);
     }
 
     const handlePopState = (event) => {
@@ -124,7 +141,7 @@ function App() {
       window.removeEventListener("popstate", handlePopState);
       cleanupCap.then(cleanup => cleanup && cleanup());
     };
-  }, [state, actions]);
+  }, [state, actions, selectedCandidate]);
 
 
   const renderContent = () => {
@@ -189,62 +206,15 @@ function App() {
 
       case SCAN_STATE.LIMIT:
         return (
-          <div className="h-full flex flex-col items-center justify-center bg-midnight-950 p-6 text-center">
-            <div className="w-20 h-20 mb-6 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
-              <span className="text-4xl">🛑</span>
-            </div>
-            <h2 className="text-2xl font-black text-white mb-2 uppercase tracking-wide">Monthly Limit Reached</h2>
-            <p className="text-gray-400 mb-8 max-w-xs px-4">
-              {quotaStatus?.message || "You have used your free auto-scans for today."}
-              <br /><br />
-              <span className="text-white font-bold">Manual Lookup is still free & unlimited.</span>
-            </p>
-
-            {/* Actions Reordered: Upgrade First */}
-            <button
-              onClick={() => IAP.purchaseMonthly()}
-              className="w-full max-w-xs py-4 bg-gradient-to-r from-neon-blue to-blue-600 rounded-xl font-bold text-white shadow-neon mb-3 active:scale-95 transition-transform"
-            >
-              UPGRADE - $2.00 / MONTH
-            </button>
-            <button
-              onClick={() => IAP.purchaseYearly()}
-              className="w-full max-w-xs py-4 bg-white/10 text-white rounded-xl font-bold border border-white/10 active:bg-white/20 transition-colors mb-6"
-            >
-              Go Unlimited - $10.00 / YEAR
-            </button>
-
-            <button
-              onClick={actions.startManualSearch}
-              className="w-full max-w-xs py-4 bg-white/5 text-neon-blue font-bold rounded-xl border border-neon-blue/30 mb-4 active:bg-white/10"
-            >
-              Continue with Manual Lookup
-            </button>
-
-            <button onClick={actions.resetFlow} className="mb-12 text-gray-500 text-sm underline">
-              Back to Home
-            </button>
-
-            {/* Device ID for Support - Moved to Bottom */}
-            <div className="p-4 bg-black/40 rounded-xl border border-white/5 w-full max-w-xs">
-              <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Device ID (Support)</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 text-xs text-neon-blue font-mono bg-black/50 p-2 rounded truncate">
-                  {deviceId}
-                </code>
-                <button
-                  onClick={copyDeviceId}
-                  className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded transition-colors"
-                >
-                  COPY
-                </button>
-              </div>
-              <p className="text-[10px] text-gray-600 mt-2 leading-tight">
-                CS-031: ID resets if app data is cleared.
-                Share this only if support asks for it.
-              </p>
-            </div>
-          </div>
+          <PaywallView
+            scansUsed={quotaStatus?.scansUsed || 5}
+            scansFree={quotaStatus?.scansFree || 5}
+            resetAt={quotaStatus?.resetAt} // Passed from API
+            onStartMonthly={() => IAP.purchaseMonthly()}
+            onStartYearly={() => IAP.purchaseYearly()}
+            onRestore={() => IAP.restorePurchases()}
+            onContinueManual={actions.startManualSearch}
+          />
         );
 
       case SCAN_STATE.MANUAL_SEARCH:
@@ -265,7 +235,10 @@ function App() {
               >
                 ⚙️
               </button>
-              <h1 className="text-5xl font-black text-white mb-2 tracking-tighter italic">
+              <h1
+                onClick={handleLogoClick}
+                className="text-5xl font-black text-white mb-2 tracking-tighter italic select-none active:scale-95 transition-transform"
+              >
                 COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
               </h1>
               <p className="text-blue-200/70 text-sm">Scan any comic to instantly see what it's worth!</p>
@@ -333,7 +306,7 @@ function App() {
                         </div>
                         <div>
                           <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
-                          <p className="text-neon-blue text-xs font-mono">${item.value?.typical || 0}</p>
+                          <p className="text-neon-blue text-xs font-mono">{formatCurrency(item.value?.typical)}</p>
                         </div>
                       </div>
                     );
@@ -360,6 +333,17 @@ function App() {
         <div className="fixed top-6 left-6 right-6 bg-red-500 text-white p-4 rounded-xl shadow-xl z-[100] flex justify-between items-center animate-slide-down">
           <span className="font-bold text-sm">{error}</span>
           <button onClick={actions.clearError} className="bg-white/20 px-3 py-1 rounded text-xs font-bold">CLOSE</button>
+        </div>
+      )}
+      {/* CS-205: Hidden Debug Footer */}
+      {showDebug && (
+        <div className="fixed bottom-0 left-0 w-full bg-black/90 text-green-400 text-[10px] font-mono p-2 z-[200] border-t border-green-900 pointer-events-none opacity-80">
+          <div className="grid grid-cols-2 gap-x-4">
+            <span>VER: {process.env.APP_VERSION || "1.0.17"}</span>
+            <span>API: {API_BASE_URL || "Local"}</span>
+            <span className="col-span-2 truncate">ID: {deviceId}</span>
+            <span className="col-span-2 text-gray-500">BE: {state === SCAN_STATE.RESULT || state === SCAN_STATE.LIMIT ? (quotaStatus?.backendVersion || pricingResult?.backendVersion || "Unknown") : "Idle"}</span>
+          </div>
         </div>
       )}
     </Layout>

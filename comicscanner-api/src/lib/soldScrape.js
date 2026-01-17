@@ -43,8 +43,15 @@ function percentile(sorted, p) {
 }
 
 export async function soldComps({ query, cacheKey, issueNumber }) {
-    const cached = await redis.get(cacheKey);
-    if (cached) return cached;
+    // CS-053: Harden Redis calls
+    try {
+        if (redis && cacheKey) {
+            const cached = await redis.get(cacheKey);
+            if (cached) return cached;
+        }
+    } catch (e) {
+        console.warn("Redis Get Error (Skipping)", e);
+    }
 
     const url = new URL("https://www.ebay.com/sch/i.html");
     url.searchParams.set("_nkw", query);
@@ -139,6 +146,13 @@ export async function soldComps({ query, cacheKey, issueNumber }) {
         }
     };
 
-    await redis.set(cacheKey, result, { ex: 60 * 60 * 24 * 7 }); // 7 days
+    // 4. Update Cache (CS-053 Safety)
+    try {
+        if (redis && cacheKey && result) {
+            await redis.set(cacheKey, result, { ex: 60 * 60 * 24 * 7 }); // 7 days
+        }
+    } catch (e) {
+        console.warn("Redis Set Error", e);
+    }
     return result;
 }

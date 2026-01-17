@@ -19,17 +19,27 @@ export function getDeviceId() {
   return "dev_init_pending";
 }
 
-// CS-032: Register with Server
-async function registerWithServer() {
+// SS-003: Register/Verify with Server (Canonical Install ID)
+async function registerWithServer(currentId = null) {
   try {
-    const res = await apiFetch('/api/register', { method: 'POST' });
+    const body = {
+      deviceHint: window.Capacitor?.getPlatform() || 'web',
+      clientInstallId: currentId
+    };
+
+    const res = await apiFetch('/api/install', {
+      method: 'POST',
+      body: JSON.stringify(body)
+    });
+
+    if (res.status === 429) throw new Error("RATE_LIMIT");
+
     const data = await res.json();
-    if (data.ok && data.installToken) {
-      return data.installToken;
-    }
-    throw new Error(data.error || "Registration failed");
+    if (data.ok && data.installId) return data.installId;
+
+    throw new Error(data.error || "Installation failed");
   } catch (e) {
-    console.error("[Identity] Registration Error", e);
+    console.error("[Identity] Installation Logic Error", e);
     throw e;
   }
 }
@@ -56,23 +66,28 @@ export async function initializeDeviceId() {
       return legacy;
     }
 
-    // 3. CS-032: Register New ID (Server-Side)
-    // If we fail here, we throw and let App handle retry or show error.
-    console.log("[Identity] Registering new device...");
-    const newId = await registerWithServer();
+    // 3. SS-003: Verify with Server (or Register New)
+    // We pass the stored ID (if any) to attempts recovery/update of last_seen
+    console.log("[Identity] Verifying identity with server...");
+    const confirmedId = await registerWithServer(legacy || null);
 
-    console.log("[Identity] Registered:", newId);
-    await Preferences.set({ key: KEY, value: newId });
-    localStorage.setItem(KEY, newId);
-    cachedId = newId;
-    return newId;
+    const source = window.Capacitor?.isNativePlatform() ? "native" : "web";
+    console.log(`[Identity] installId=${confirmedId} source=${source}`);
+
+    await Preferences.set({ key: KEY, value: confirmedId });
+    localStorage.setItem(KEY, confirmedId);
+    cachedId = confirmedId;
+    return confirmedId;
 
   } catch (e) {
     console.error("[Identity] Init Failed", e);
-    // On failure, return null so App knows we are in a bad state?
-    // Or return a temp one but don't save it?
-    // For P0 robustness, we probably want to block or retry.
-    // Let's return null to signal failure.
+    // On failure, if we have a cached one, return it even if verification failed?
+    // Failing open might be safer for UX, but risky for quota.
+    // For now, return null logic was here, but let's try to survive if we have *something*.
+    if (cachedId) return cachedId;
+
+    // If we truly fail (network down + clean install), we might default to a temp ID?
+    // Or just return null and let the UI block.
     return null;
   }
 }

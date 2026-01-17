@@ -33,7 +33,40 @@ export async function POST(req) {
         return Response.json({ ok: false, code: "BAD_REQUEST", error: "Missing image data" }, { status: 400 });
     }
 
-    const imageHash = hashImage(parsed.data.image);
+    // CS-055: Image Normalization
+    let cleanImage = parsed.data.image;
+
+    // Check for data URI prefix
+    const dataUriMatch = cleanImage.match(/^data:image\/([a-zA-Z+]+);base64,/);
+    if (dataUriMatch) {
+        const mime = dataUriMatch[1].toLowerCase();
+        // OpenAI supports: jpeg, jpg, png, webp, non-animated gif
+        // We reject sensitive formats or unknown ones
+        if (['heic', 'heif', 'tiff', 'bmp'].includes(mime)) {
+            console.log(`[IDENTIFY] Unsupported MIME: ${mime}`);
+            return Response.json({ ok: true, candidates: [], code: "NO_MATCH" }); // Soft fail
+        }
+        // Strip prefix for processing/hashing if strictly raw base64 needed, 
+        // BUT OpenAI usually accepts Data URL if passed as `type: "image_url", image_url: { url: ... }`
+        // Our provider likely constructs this.
+        // If provider expects raw base64, we strip.
+        // Let's assume provider expects raw base64 or handles it.
+        // Actually, "hashImage" calculates hash. If we strip prefix, hash changes.
+        // Let's keep consistency:
+
+        // If we want to standardise, we usually pass Data URI to OpenAI.
+        // But hash should be consistent.
+    } else {
+        // No prefix? Assume JPEG if just raw base64, usually safe.
+        // But verify it's base64-ish? 
+        if (cleanImage.length < 100) return Response.json({ ok: false, code: "BAD_IMAGE" }, { status: 400 });
+
+        // Auto-prefix if missing? OpenAI prefers Data URI for base64 inputs.
+        // Let's append if completely missing, assuming jpeg.
+        cleanImage = `data:image/jpeg;base64,${cleanImage}`;
+    }
+
+    const imageHash = hashImage(cleanImage);
     const cacheKey = `identify:${imageHash}`;
 
     // 3. Cache Lookup
@@ -74,7 +107,7 @@ export async function POST(req) {
     // 5. Vision Identification
     try {
         const provider = getVisionProvider();
-        const candidates = await provider.identify(parsed.data.image);
+        const candidates = await provider.identify(cleanImage);
 
         // 6. Store in Cache (if valid match found)
         if (candidates.length > 0) {
@@ -84,7 +117,8 @@ export async function POST(req) {
 
         return Response.json({
             ok: true,
-            candidates
+            candidates,
+            backendVersion: process.env.VERCEL_GIT_COMMIT_SHA || "dev"
         });
 
     } catch (error) {
