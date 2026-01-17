@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { normalizeImageForVision } from "../../image";
 
 export class OpenAIVisionProvider {
     constructor() {
@@ -8,6 +9,10 @@ export class OpenAIVisionProvider {
     async identify(base64Image) {
         const startTime = Date.now();
         try {
+            // CS-015: Normalize image to ensure JPEG format and reasonable size
+            // This prevents "400 Bad Request" from OpenAI for unsupported formats (e.g. raw HEIC or weird encoding)
+            const cleanImage = await normalizeImageForVision(base64Image);
+
             const completion = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
                 messages: [
@@ -19,7 +24,7 @@ export class OpenAIVisionProvider {
                         role: "user",
                         content: [
                             { type: "text", text: "Identify this comic." },
-                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${cleanImage}` } }
                         ]
                     }
                 ],
