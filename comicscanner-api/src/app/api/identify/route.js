@@ -22,10 +22,11 @@ export async function POST(req) {
     }
 
     // TODO: Ximilar integration once paid tier is enabled.
+    // For now, return NO_MATCH so client falls back to manual search gracefully.
     return Response.json({
-        ok: false,
-        code: "IDENTIFY_UNAVAILABLE",
-        error: "Comic identification temporarily unavailable",
+        ok: true,
+        code: "NO_MATCH",
+        error: null,
         candidates: []
-    }, { status: 503 });
+    }, { status: 200 });
 }
