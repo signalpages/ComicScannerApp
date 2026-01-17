@@ -1,8 +1,14 @@
 import { OpenAIVisionProvider } from "./providers/openai";
+import { XimilarVisionProvider } from "./providers/ximilar";
+import { FallbackVisionProvider } from "./providers/fallback";
 
 export function getVisionProvider() {
-    // In the future, we can switch providers based on env vars or feature flags here.
-    // e.g. if (process.env.VISION_PROVIDER === 'ximilar') return new XimilarVisionProvider();
+    if (process.env.VISION_PROVIDER === 'ximilar') {
+        return new FallbackVisionProvider(
+            new XimilarVisionProvider(),
+            new OpenAIVisionProvider()
+        );
+    }
 
     return new OpenAIVisionProvider();
 }
