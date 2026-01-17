@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { apiFetch } from "../lib/apiFetch";
-import { getDeviceId, ensureInstallId } from "../lib/deviceId";
+import { apiFetch } from "../lib/apiFetch";
+import { getInstallId, setInstallId } from "../lib/installId";
+import { Device } from "@capacitor/device";
+import { App as CapacitorApp } from "@capacitor/app";
 
 export const SCAN_STATE = {
   HOME: "HOME",
@@ -36,13 +39,42 @@ export function useScanFlow() {
   // -------------------------
   const [history, setHistory] = useState([]);
 
-  // Fetch history on mount / deviceId change
+  // Fetch history on mount / initialization (CS-303)
   useEffect(() => {
-    const loadHistory = async () => {
-      // CS-302: Identity Persistence
-      const id = await ensureInstallId();
-      if (!id) return;
+    const initAndLoad = async () => {
+      let id = await getInstallId();
 
+      // 1. Initialize logic if no ID exists (CS-303)
+      if (!id) {
+        try {
+          // Get Metadata
+          const info = await Device.getInfo().catch(() => ({ platform: 'web' }));
+          const appInfo = await CapacitorApp.getInfo().catch(() => ({ version: '1.0.0' }));
+
+          const res = await apiFetch("/api/install", {
+            method: "POST",
+            body: {
+              platform: info.platform,
+              appVersion: appInfo.version
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (data.installId) {
+              id = data.installId;
+              await setInstallId(id);
+              console.log("[Init] New Install ID registered:", id);
+            }
+          }
+        } catch (e) {
+          console.warn("[Init] Handshake failed, history may be unavailable until online.", e);
+        }
+      }
+
+      if (!id) return; // Still strict, don't load history if no ID (prevent bad calls)
+
+      // 2. Load History
       try {
         const res = await apiFetch(`/api/saved-scans?installId=${id}&limit=20`);
         if (res.ok) {
@@ -76,7 +108,7 @@ export function useScanFlow() {
         console.warn("[History] Sync failed", e);
       }
     };
-    loadHistory();
+    initAndLoad();
   }, [state]); // Reload when state changes (e.g. after save)
 
   // -------------------------

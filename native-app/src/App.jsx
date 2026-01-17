@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState, useCallback } from "react";
 import Toast from "./components/Toast";
+import ErrorBoundary from "./components/ErrorBoundary";
 import Layout from "./components/Layout";
 import CameraView from "./components/CameraView";
 import ResultCard from "./components/ResultCard";
@@ -326,31 +327,33 @@ function App() {
   };
 
   return (
-    <Layout>
-      {renderContent()}
+    <ErrorBoundary>
+      <Layout>
+        {renderContent()}
 
-      {/* Global Toast Overlay */}
-      <Toast message={toast?.message} type={toast?.type} />
+        {/* Global Toast Overlay */}
+        <Toast message={toast?.message} type={toast?.type} />
 
-      {/* Global Error Toast */}
-      {error && error !== 'SCAN_LIMIT_REACHED' && (
-        <div className="fixed top-6 left-6 right-6 bg-red-500 text-white p-4 rounded-xl shadow-xl z-[100] flex justify-between items-center animate-slide-down">
-          <span className="font-bold text-sm">{error}</span>
-          <button onClick={actions.clearError} className="bg-white/20 px-3 py-1 rounded text-xs font-bold">CLOSE</button>
-        </div>
-      )}
-      {/* CS-205: Hidden Debug Footer */}
-      {showDebug && (
-        <div className="fixed bottom-0 left-0 w-full bg-black/90 text-green-400 text-[10px] font-mono p-2 z-[200] border-t border-green-900 pointer-events-none opacity-80">
-          <div className="grid grid-cols-2 gap-x-4">
-            <span>VER: {process.env.APP_VERSION || "1.0.17"}</span>
-            <span>API: {API_BASE_URL || "Local"}</span>
-            <span className="col-span-2 truncate">ID: {deviceId}</span>
-            <span className="col-span-2 text-gray-500">BE: {state === SCAN_STATE.RESULT || state === SCAN_STATE.LIMIT ? (quotaStatus?.backendVersion || pricingResult?.backendVersion || "Unknown") : "Idle"}</span>
+        {/* Global Error Toast */}
+        {error && error !== 'SCAN_LIMIT_REACHED' && (
+          <div className="fixed top-6 left-6 right-6 bg-red-500 text-white p-4 rounded-xl shadow-xl z-[100] flex justify-between items-center animate-slide-down">
+            <span className="font-bold text-sm">{error}</span>
+            <button onClick={actions.clearError} className="bg-white/20 px-3 py-1 rounded text-xs font-bold">CLOSE</button>
           </div>
-        </div>
-      )}
-    </Layout>
+        )}
+        {/* CS-205: Hidden Debug Footer */}
+        {showDebug && (
+          <div className="fixed bottom-0 left-0 w-full bg-black/90 text-green-400 text-[10px] font-mono p-2 z-[200] border-t border-green-900 pointer-events-none opacity-80">
+            <div className="grid grid-cols-2 gap-x-4">
+              <span>VER: {process.env.APP_VERSION || "1.0.17"}</span>
+              <span>API: {API_BASE_URL || "Local"}</span>
+              <span className="col-span-2 truncate">ID: {deviceId}</span>
+              <span className="col-span-2 text-gray-500">BE: {state === SCAN_STATE.RESULT || state === SCAN_STATE.LIMIT ? (quotaStatus?.backendVersion || pricingResult?.backendVersion || "Unknown") : "Idle"}</span>
+            </div>
+          </div>
+        )}
+      </Layout>
+    </ErrorBoundary >
   );
 }
 

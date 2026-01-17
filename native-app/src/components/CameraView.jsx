@@ -1,75 +1,66 @@
-import React, { useRef, useState, useEffect } from "react";
-import { Camera } from '@capacitor/camera';
+import React, { useState } from "react";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 
 const CameraView = ({ onCapture, onManualFallback }) => {
-    const videoRef = useRef(null);
-    const canvasRef = useRef(null);
-    const streamRef = useRef(null);
-
     const [isScanning, setIsScanning] = useState(false);
-    // error types: 'PERMISSION_DENIED', 'UNAVAILABLE', 'GENERIC'
-    const [errorState, setErrorState] = useState(null);
+    const [err, setErr] = useState(null);
 
-    const [isStreamReady, setIsStreamReady] = useState(false);
+    const takePhoto = async () => {
+        if (isScanning) return;
+        setErr(null);
+        setIsScanning(true);
 
-    useEffect(() => {
-        let cancelled = false;
-        // ... (initCamera logic remains, but we add setIsStreamReady(true) after success)
+        try {
+            const photo = await Camera.getPhoto({
+                source: CameraSource.Camera,
+                resultType: CameraResultType.Base64,
+                quality: 90,
+                correctOrientation: true,
+            });
 
-        async function initCamera() {
-            // ... existing logic ...
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-                // Play is handled by onLoadedMetadata/onCanPlay now for robustness
-                // But we can still try here
-                await videoRef.current.play().catch(() => { });
-                setErrorState(null);
-                // Note: We'll set ready state in the video event listeners to be sure
+            if (!photo?.base64String) {
+                throw new Error("No image returned from camera");
             }
-            // ...
-        }
-        initCamera();
-        // ...
-    }, []);
 
-    // ...
+            // Send base64 without data: prefix (backend expects raw base64)
+            onCapture(photo.base64String);
+        } catch (e) {
+            console.error("[CameraView] capture failed", e);
+            setErr("Camera failed. Please try again.");
+            setIsScanning(false);
+        }
+    };
 
     return (
-        <div className="relative h-[100dvh] w-full bg-black overflow-hidden pointer-events-auto">
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                onLoadedMetadata={() => {
-                    const video = videoRef.current;
-                    if (video) {
-                        video.play().catch(e => console.warn("Auto-play failed", e));
-                    }
-                }}
-                onPlaying={() => setIsStreamReady(true)}
-                className="w-full h-full object-cover transition-opacity duration-500"
-                style={{ opacity: isStreamReady ? 1 : 0 }}
-            />
-            <canvas ref={canvasRef} className="hidden" />
+        <div className="relative h-[100dvh] w-full bg-black overflow-hidden">
+            <div className="absolute inset-0 flex items-center justify-center text-white/30">
+                {/* Optional: background placeholder */}
+            </div>
 
-            {/* Controls */}
-            <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50 pointer-events-auto">
+            <div className="absolute top-6 right-6 z-50">
                 <button
-                    onClick={captureOnce}
+                    onClick={onManualFallback}
+                    className="text-white/80 font-bold text-sm bg-black/40 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md active:bg-white/20"
+                >
+                    Manual Search
+                </button>
+            </div>
+
+            {err && (
+                <div className="absolute top-20 left-0 right-0 mx-auto w-[92%] max-w-md bg-red-500/20 border border-red-500/30 text-red-200 px-4 py-3 rounded-xl">
+                    {err}
+                </div>
+            )}
+
+            <div className="absolute bottom-10 left-0 right-0 flex justify-center z-50">
+                <button
+                    onClick={takePhoto}
                     disabled={isScanning}
                     className={`w-20 h-20 rounded-full border-4 shadow-lg active:scale-95 transition-transform ${isScanning ? "bg-gray-700 border-gray-500" : "bg-white border-neon-blue"
                         }`}
+                    aria-label="Capture"
                 />
             </div>
-
-            {/* Manual Fallback Link (Always visible in camera mode too for convenience) */}
-            <button
-                onClick={onManualFallback}
-                className="absolute top-6 right-6 text-white/80 font-bold text-sm bg-black/40 px-3 py-1.5 rounded-full border border-white/10 backdrop-blur-md active:bg-white/20"
-            >
-                Manual Search
-            </button>
 
             {isScanning && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-neon-blue font-bold z-40 animate-pulse">

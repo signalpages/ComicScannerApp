@@ -1,4 +1,4 @@
-import { getDeviceId, ensureInstallId } from "./deviceId";
+import { getInstallId } from "./installId";
 import { Capacitor } from "@capacitor/core";
 import { API_BASE_URL } from "../config"; // CS-206
 import { IAP } from "../services/iapBridge";
@@ -10,12 +10,14 @@ import { IAP } from "../services/iapBridge";
  * HARDENED: Now forces absolute paths for ALL relative URLs in native.
  */
 export const apiFetch = async (url, options = {}) => {
-  // CS-208: Strict Identity Gating
-  // We must have a valid installId before talking to the backend.
-  const installId = await ensureInstallId();
+  // CS-303: Strict Identity Gating via installId.js
+  const installId = await getInstallId();
 
-  if (!installId) {
-    console.error("[API] Blocked: No Install ID Available");
+  if (!installId && !url.includes("/api/install")) {
+    // Determine if this is a critical block or if we auto-init?
+    // User Guide says: "Update apiFetch to always send x-install-id".
+    // If it's missing, we probably should block or fail, but /api/install itself must pass.
+    console.error("[API] Blocked: No Install ID (and not /api/install)");
     throw new Error("Initializing app identity...");
   }
 
