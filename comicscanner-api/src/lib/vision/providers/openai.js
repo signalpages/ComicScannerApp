@@ -12,7 +12,7 @@ export class OpenAIVisionProvider {
                 messages: [
                     {
                         role: "system",
-                        content: "You are a comic book expert. Identify the comic from the image. Return JSON ONLY: { \"seriesTitle\": string, \"issueNumber\": string, \"publisher\": string, \"year\": numberOrNull }. If uncertain, return null fields."
+                        content: "You are a comic book expert. Identify the comic from the image. Return JSON ONLY: { \"seriesTitle\": string, \"issueNumber\": string, \"publisher\": string, \"year\": numberOrNull, \"confidence\": number }. Confidence should be 0.0 to 1.0 based on clarity. If uncertain, return null fields and low confidence."
                     },
                     {
                         role: "user",
@@ -36,11 +36,18 @@ export class OpenAIVisionProvider {
                 issueNumber: result.issueNumber ? String(result.issueNumber) : null,
                 publisher: result.publisher || null,
                 year: result.year || null,
-                confidence: 1.0
+                confidence: typeof result.confidence === 'number' ? result.confidence : 0.5
             };
 
             // Filter out complete garbage (no title)
             if (!candidate.seriesTitle) {
+                return [];
+            }
+
+            // CS-005: Confidence Gating
+            const THRESHOLD = 0.7;
+            if (candidate.confidence < THRESHOLD) {
+                console.log(`[LOW_CONFIDENCE] ${candidate.confidence} < ${THRESHOLD} for ${candidate.seriesTitle}`);
                 return [];
             }
 
