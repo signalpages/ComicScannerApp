@@ -6,6 +6,7 @@ export class XimilarVisionProvider {
     }
 
     async identify(base64Image) {
+        const startTime = Date.now();
         if (!this.apiToken || !this.taskId) {
             console.warn("Missing Ximilar Env Vars");
             return [];
@@ -26,13 +27,18 @@ export class XimilarVisionProvider {
 
             if (!response.ok) {
                 console.error("Ximilar API Error", response.status, await response.text());
+                const duration = Date.now() - startTime;
+                console.log(`[METRICS] type=provider name=ximilar status=error duration=${duration}ms`);
                 return [];
             }
 
             const json = await response.json();
             const record = json.records?.[0]; // Best record
 
+            const duration = Date.now() - startTime;
+
             if (!record || !record._objects || record._objects.length === 0) {
+                console.log(`[METRICS] type=provider name=ximilar status=empty duration=${duration}ms`);
                 return [];
             }
 
@@ -56,14 +62,17 @@ export class XimilarVisionProvider {
 
             const THRESHOLD = 0.7;
             if (candidate.confidence < THRESHOLD) {
-                console.log(`[XIMILAR LOW CONFIDENCE] ${candidate.confidence}`);
+                console.log(`[METRICS] type=provider name=ximilar status=filtered reason=low_confidence duration=${duration}ms confidence=${candidate.confidence}`);
                 return [];
             }
 
+            console.log(`[METRICS] type=provider name=ximilar status=success duration=${duration}ms confidence=${candidate.confidence}`);
             return [candidate];
 
         } catch (error) {
+            const duration = Date.now() - startTime;
             console.error("Ximilar Provider Error:", error);
+            console.log(`[METRICS] type=provider name=ximilar status=error duration=${duration}ms`);
             return [];
         }
     }

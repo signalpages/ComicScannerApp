@@ -9,11 +9,12 @@ export class FallbackVisionProvider {
         try {
             const primaryResults = await this.primary.identify(base64Image);
             if (primaryResults && primaryResults.length > 0) {
-                console.log("[VISION] Primary Provider Success");
                 return primaryResults;
             }
+            console.log("[METRICS] type=fallback source=primary reason=empty_results");
         } catch (e) {
             console.warn("[VISION] Primary Provider Failed:", e);
+            console.log("[METRICS] type=fallback source=primary reason=error");
         }
 
         // Fallback to Secondary

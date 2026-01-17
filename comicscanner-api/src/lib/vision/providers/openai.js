@@ -6,6 +6,7 @@ export class OpenAIVisionProvider {
     }
 
     async identify(base64Image) {
+        const startTime = Date.now();
         try {
             const completion = await this.openai.chat.completions.create({
                 model: "gpt-4o-mini",
@@ -39,22 +40,28 @@ export class OpenAIVisionProvider {
                 confidence: typeof result.confidence === 'number' ? result.confidence : 0.5
             };
 
+            const duration = Date.now() - startTime;
+
             // Filter out complete garbage (no title)
             if (!candidate.seriesTitle) {
+                console.log(`[METRICS] type=provider name=openai status=empty duration=${duration}ms confidence=${candidate.confidence}`);
                 return [];
             }
 
             // CS-005: Confidence Gating
             const THRESHOLD = 0.7;
             if (candidate.confidence < THRESHOLD) {
-                console.log(`[LOW_CONFIDENCE] ${candidate.confidence} < ${THRESHOLD} for ${candidate.seriesTitle}`);
+                console.log(`[METRICS] type=provider name=openai status=filtered reason=low_confidence duration=${duration}ms confidence=${candidate.confidence}`);
                 return [];
             }
 
+            console.log(`[METRICS] type=provider name=openai status=success duration=${duration}ms confidence=${candidate.confidence}`);
             return [candidate];
 
         } catch (error) {
+            const duration = Date.now() - startTime;
             console.error("OpenAI Vision Error:", error);
+            console.log(`[METRICS] type=provider name=openai status=error duration=${duration}ms`);
             // Return empty array on error (Soft Failure)
             return [];
         }

@@ -37,7 +37,7 @@ export async function POST(req) {
     try {
         const cached = await redis.get(cacheKey);
         if (cached) {
-            console.log(`[CACHE HIT] ${imageHash}`);
+            console.log(`[METRICS] type=cache status=hit key=${imageHash.substring(0, 8)}`);
             // Return cached result - bypass quota!
             return Response.json({
                 ok: true,
@@ -45,6 +45,7 @@ export async function POST(req) {
                 cached: true
             });
         }
+        console.log(`[METRICS] type=cache status=miss key=${imageHash.substring(0, 8)}`);
     } catch (e) {
         console.warn("Redis Error:", e);
     }
