@@ -179,51 +179,46 @@ export function useScanFlow() {
         const issueNumber = candidate.issueNumber || "";
         const editionId = candidate.editionId;
 
-        const resp = await apiFetch("/api/price", {
-          method: "POST",
-          headers: { "x-anon-id": getDeviceId() },
-          body: { seriesTitle, issueNumber, editionId },
+        // CS-017: Remove Pricing Logic - Go straight to RESULT
+        // We no longer fetch /api/price.
+        setPricingResult({
+          status: 'success',
+          value: { variants: [] } // Minimal mock so ResultCard doesn't crash on null
         });
 
-        const data = await resp.json();
-        if (!data?.ok) throw new Error(data?.error || "Pricing failed");
-
-        setPricingResult(data);
         setState(SCAN_STATE.RESULT);
 
         saveHistory({
+          id: crypto.randomUUID(), // CS-020: Unique ID for stable keys
           editionId,
-          displayName: candidate.displayName,
+          displayName: candidate.displayName || seriesTitle, // CS-019: Fallback to constructed title
           scanImage: capturedImage, // Persist user scan
-          coverUrl: candidate.coverUrl || null, // Keep original cover
-          marketImageUrl: data.ebay?.imageUrl || null, // Store market comp image
+          coverUrl: candidate.coverUrl || null,
+          marketImageUrl: null,
           year: candidate.year ?? null,
           publisher: candidate.publisher ?? null,
-          value: data.value,
+          value: null,
           timestamp: Date.now(),
+          // CS-019: Store full candidate info for robust restoration
+          candidateSnapshot: {
+            seriesTitle,
+            issueNumber,
+            publisher: candidate.publisher,
+            year: candidate.year,
+            displayName: candidate.displayName,
+            confidence: candidate.confidence,
+            is_key_issue: candidate.is_key_issue
+          }
         });
       } catch (e) {
         console.error(e);
-        try {
-          await apiFetch("/api/log", {
-            method: "POST",
-            body: {
-              where: "confirmCandidate",
-              message: e.message,
-              editionId,
-              seriesTitle,
-              issueNumber,
-              userAgent: navigator.userAgent,
-            },
-          });
-        } catch { }
-        setError("Pricing failed. Please try again.");
+        setError("Error processing result. Please try again.");
         setState(SCAN_STATE.VERIFY);
       } finally {
         inFlight.current = false;
       }
     },
-    [saveHistory]
+    [saveHistory, capturedImage]
   );
 
   // -------------------------
@@ -261,18 +256,27 @@ export function useScanFlow() {
   }, []);
 
   const openHistoryItem = useCallback((item) => {
-    setCapturedImage(item.scanImage || null); // Restore scan image
+    // CS-020: Restore immutable snapshot
+    setCapturedImage(item.scanImage || null);
 
-    setSelectedCandidate({
+    // CS-019: Restore robust candidate object
+    const restoredCandidate = item.candidateSnapshot || {
       editionId: item.editionId,
       displayName: item.displayName,
+      seriesTitle: item.displayName, // fallback
       coverUrl: item.coverUrl ?? null,
-      marketImageUrl: item.marketImageUrl ?? null,
       year: item.year ?? null,
       publisher: item.publisher ?? null,
+    };
+
+    setSelectedCandidate(restoredCandidate);
+
+    // Ensure pricing result is valid so UI renders
+    setPricingResult({
+      status: 'success',
+      value: { variants: [] }
     });
 
-    setPricingResult({ ok: true, editionId: item.editionId, value: item.value, comps: [] });
     setState(SCAN_STATE.RESULT);
   }, []);
 

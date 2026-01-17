@@ -116,36 +116,30 @@ function App() {
           />
         );
 
-      case SCAN_STATE.PRICING:
-        return (
-          <div className="h-full flex flex-col items-center justify-center bg-midnight-950 text-white">
-            <div className="text-4xl mb-4">💰</div>
-            <p className="text-xl font-bold text-neon-purple animate-pulse">VALUING...</p>
-            <p className="text-sm text-gray-400 mt-2">Fetching comps from eBay</p>
-          </div>
-        );
-
       case SCAN_STATE.RESULT:
         return (
           <ResultCard
-            data={{ // Mapping new data shape to old ResultCard props for minimal refactor
+            data={{
+              /** 
+               * CS-017: Simplified Result Data
+               * We no longer map complex pricing objects. 
+               * Just pass what we have from the candidate + simple ebay/image fallback.
+               */
               aiData: {
                 title: selectedCandidate?.seriesTitle || selectedCandidate?.displayName || 'Unknown',
                 issue_number: selectedCandidate?.issueNumber || null,
                 year: selectedCandidate?.year,
-                publisher: selectedCandidate?.publisher
+                publisher: selectedCandidate?.publisher,
+                confidence: selectedCandidate?.confidence,
+                is_key_issue: selectedCandidate?.is_key_issue
               },
               pricingData: {
-                ...pricingResult?.value, // poor, typical, nearMint
-                price_raw: pricingResult?.value?.typical,
-                price_graded: pricingResult?.value?.nearMint,
-                // Mapping: use coverUrl to match ResultCard expectation
+                // Minimal fallback
                 coverUrl: selectedCandidate?.coverUrl,
                 marketImageUrl: selectedCandidate?.marketImageUrl,
                 publisher: selectedCandidate?.publisher,
-                cover_date: selectedCandidate?.year
               },
-              scanImage: capturedImage // Pass base64 capture directly
+              scanImage: capturedImage
             }}
             onRescan={actions.startCamera}
           />
@@ -276,7 +270,7 @@ function App() {
 
                     return (
                       <div
-                        key={idx}
+                        key={item.id || idx} // CS-020: Use stable ID if available
                         className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5 active:bg-red-500/10 transition-colors select-none"
                         onClick={() => actions.openHistoryItem(item)}
                         onMouseDown={startPress}
