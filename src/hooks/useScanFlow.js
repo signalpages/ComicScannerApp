@@ -165,6 +165,9 @@ export function useScanFlow() {
   // -------------------------
   // Candidate → Pricing
   // -------------------------
+  // -------------------------
+  // Candidate → Pricing
+  // -------------------------
   const confirmCandidate = useCallback(
     async (candidate) => {
       if (!candidate) return;
@@ -179,27 +182,29 @@ export function useScanFlow() {
         const issueNumber = candidate.issueNumber || "";
         const editionId = candidate.editionId;
 
-        // CS-017: Remove Pricing Logic - Go straight to RESULT
-        // We no longer fetch /api/price.
-        setPricingResult({
-          status: 'success',
-          value: { variants: [] } // Minimal mock so ResultCard doesn't crash on null
-        });
+        // CS-025: Non-blocking Pricing
+        // 1. Reset pricing to loading state (null)
+        setPricingResult(null);
 
+        // 2. Immediate Transition to Result
         setState(SCAN_STATE.RESULT);
 
+        // 3. Save History immediately (with null value initially, manual update if needed?)
+        // Actually, we can save history now, and maybe update it later? 
+        // For now, let's just save valid candidate data. History value will be null, which is fine ("Check Value").
+        const historyId = crypto.randomUUID();
+
         saveHistory({
-          id: crypto.randomUUID(), // CS-020: Unique ID for stable keys
+          id: historyId, // CS-020: Unique ID
           editionId,
-          displayName: candidate.displayName || seriesTitle, // CS-019: Fallback to constructed title
-          scanImage: capturedImage, // Persist user scan
+          displayName: candidate.displayName || seriesTitle,
+          scanImage: capturedImage,
           coverUrl: candidate.coverUrl || null,
           marketImageUrl: null,
           year: candidate.year ?? null,
           publisher: candidate.publisher ?? null,
           value: null,
           timestamp: Date.now(),
-          // CS-019: Store full candidate info for robust restoration
           candidateSnapshot: {
             seriesTitle,
             issueNumber,
@@ -210,6 +215,29 @@ export function useScanFlow() {
             is_key_issue: candidate.is_key_issue
           }
         });
+
+        // 4. Background Pricing Fetch (Fire and Forget from UI perspective)
+        // We do NOT await this before state change (already done above).
+        apiFetch("/api/price", {
+          method: "POST",
+          body: { seriesTitle, issueNumber, editionId },
+          headers: { "x-anon-id": getDeviceId() }
+        })
+          .then(async (res) => {
+            const data = await res.json();
+            if (data.ok) {
+              setPricingResult(data);
+            } else {
+              console.warn("Pricing bg error", data);
+              // CS-025: Fail silently to "Unavailable"
+              setPricingResult({ value: { typical: null } });
+            }
+          })
+          .catch(err => {
+            console.error("Pricing bg fetch failed", err);
+            setPricingResult({ value: { typical: null } });
+          });
+
       } catch (e) {
         console.error(e);
         setError("Error processing result. Please try again.");

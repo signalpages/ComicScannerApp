@@ -6,6 +6,7 @@ const Body = z.object({
     seriesTitle: z.string().min(1),
     issueNumber: z.union([z.string(), z.number()]).transform(String),
     editionId: z.string().optional().nullable(),
+    year: z.union([z.number(), z.string(), z.null()]).optional(), // CS-027
 });
 
 export async function POST(req) {
@@ -31,6 +32,7 @@ export async function POST(req) {
         const out = await priceComic({
             seriesTitle: parsed.data.seriesTitle,
             issueNumber: parsed.data.issueNumber,
+            year: parsed.data.year, // CS-027: Pass year
         });
 
         return Response.json({ ok: true, ...out });

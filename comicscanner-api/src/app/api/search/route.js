@@ -61,20 +61,63 @@ function mapItemsToCandidates(items, requestedIssue) {
     if (!items || !Array.isArray(items)) return [];
 
     return items.map(item => {
-        // Basic mapping. In a perfect world we'd parse the title to extract "real" series/issue.
-        // For now, we trust the user's manual input or the item title.
+        let title = item.title || "";
+        let seriesTitle = title;
+        let issueNumber = requestedIssue || null;
+        let year = null;
 
-        // If the item title contains the requested issue, likely a match.
-        // We accept the item as a candidate.
+        // CS-026: Parse Title for Series + Issue
+        // Regex looks for "Title #Issue" or "Title Issue" patterns
+        // Very basic implementation: look for the last #number or just number
+
+        try {
+            // 1. Try to extract year (4 digits, 19xx or 20xx)
+            const yearMatch = title.match(/\b(19|20)\d{2}\b/);
+            if (yearMatch) {
+                year = parseInt(yearMatch[0], 10);
+                // Remove year from title for cleaner series processing
+                title = title.replace(yearMatch[0], "").trim();
+            }
+
+            // 2. Try to extract issue number (look for #123 or Vol 1 123 or just 123 at the end of a segment)
+            // Prioritize explicit #
+            const hashMatch = title.match(/#\s*(\d+(\.\d+)?)/);
+            if (hashMatch) {
+                issueNumber = hashMatch[1];
+                // Series title is likely everything before the hash
+                seriesTitle = title.substring(0, hashMatch.index).trim();
+            } else {
+                // Fallback: look for issue number at end of string if we have a requested issue
+                // If the user typed "Spawn 1", and we see "Spawn 1", we can assume 1 is the issue
+                if (requestedIssue) {
+                    const reRequest = new RegExp(`\\b${requestedIssue}\\b`);
+                    if (reRequest.test(title)) {
+                        issueNumber = requestedIssue;
+                        // Try to strip it out? Maybe too risky. Keep full title as seriesTitle fallback
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("Title parsing error", e);
+        }
+
+        // Clean up seriesTitle (remove junk)
+        seriesTitle = seriesTitle.replace(/\(.*\)/g, "").trim(); // remove parens
+        seriesTitle = seriesTitle.replace(/-+$/, "").trim(); // remove trailing dashes behavior
+
+        // Construct clean displayName
+        const displayName = issueNumber
+            ? `${seriesTitle} #${issueNumber}`
+            : seriesTitle;
 
         return {
-            editionId: item.itemId, // Use eBay Item ID as temp ID
-            displayName: item.title,
-            seriesTitle: item.title, // Use full title as series title to ensure next step uses it all
-            issueNumber: requestedIssue || null, // Best guess
+            editionId: item.itemId,
+            displayName: displayName, // CS-026: Clean display name
+            seriesTitle: seriesTitle,
+            issueNumber: issueNumber,
             coverUrl: item.image?.imageUrl || null,
             publisher: null,
-            year: null, // Hard to extract reliably without regex parsing
+            year: year,
             marketImageUrl: item.image?.imageUrl || null
         };
     });

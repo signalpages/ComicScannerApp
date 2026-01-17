@@ -134,10 +134,12 @@ function App() {
                 is_key_issue: selectedCandidate?.is_key_issue
               },
               pricingData: {
-                // Minimal fallback
+                // Minimal fallback + Real pricing
                 coverUrl: selectedCandidate?.coverUrl,
                 marketImageUrl: selectedCandidate?.marketImageUrl,
                 publisher: selectedCandidate?.publisher,
+                // CS-025: Pass actual pricing result
+                result: pricingResult
               },
               scanImage: capturedImage
             }}

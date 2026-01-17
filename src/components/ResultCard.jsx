@@ -32,18 +32,29 @@ const ResultCard = ({ data, onRescan }) => {
     pricingData.marketImageUrl ||     // 4. Stored eBay image (history)
     null;
 
-  // CS-018: Build eBay Sold Query
-  // Format: "Series Title #IssueNumber comic" (+ "CGC" if graded?)
-  // We want strict sold listings.
-  const ebayQueryComponents = [aiData.title];
-  if (issueNum) ebayQueryComponents.push(`#${issueNum}`);
+  // CS-025: Pricing State
+  const pricingResult = pricingData.result;
+  const isLoadingPrice = pricingResult === null;
+  const priceValue = pricingResult?.value?.typical;
+  const isPriceAvailable = priceValue != null;
+
+  // CS-028: Build eBay Sold Query
+  // Format: "Series Title #IssueNumber comic"
+  // We prefer the series title if available, otherwise full title.
+  // App.jsx maps aiData.title to seriesTitle || displayName.
+  // We should try to be clean.
+
+  const queryTitle = aiData.title || "";
+  const queryIssue = issueNum;
+
+  const ebayQueryComponents = [queryTitle];
+  if (queryIssue) ebayQueryComponents.push(`#${queryIssue}`);
+  // If we have strict year from pricing, usually better not to enforce it on the specific "Recent Sales" link 
+  // unless we are sure. But the requirement says "Build eBay sold URL from seriesTitle + issueNumber".
+  // Keeping it simple ensures matches.
   ebayQueryComponents.push("comic");
 
-  // Clean up
   const ebayQuery = ebayQueryComponents.join(" ");
-
-  // CS-018: URL Construction
-  // https://www.ebay.com/sch/i.html?_nkw=...&LH_Sold=1&LH_Complete=1
   const recentSalesUrl = `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(ebayQuery)}&LH_Sold=1&LH_Complete=1`;
 
   return (
@@ -56,11 +67,11 @@ const ResultCard = ({ data, onRescan }) => {
           fallbackSrc={!scanImage ? "/placeholder-cover.png" : null}
           size="xl"
           alt="Comic cover"
-          className="max-w-[180px] rounded-xl shadow-lg border-[3px] border-white/10"
+          className={`max-w-[180px] rounded-xl shadow-lg border-[3px] border-white/10 ${isLoadingPrice ? 'animate-pulse' : ''}`}
         />
       </div>
 
-      {/* CS-016: Confidence Badge Moved Below Cover */}
+      {/* CS-016: Confidence Badge */}
       <div className="flex flex-col items-center justify-center mb-6 gap-1">
         <span className={`text-[10px] uppercase font-bold tracking-widest px-3 py-1 rounded-full border ${isMatchHigh
           ? 'bg-green-500/10 text-green-400 border-green-500/30'
@@ -71,11 +82,11 @@ const ResultCard = ({ data, onRescan }) => {
       </div>
 
       {/* Title */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-6">
         <h2 className="text-3xl font-bold text-white leading-tight">
           {aiData.title}
-          {issueNum && (
-            <span className="text-neon-blue ml-2">#{issueNum}</span>
+          {queryIssue && (
+            <span className="text-neon-blue ml-2">#{queryIssue}</span>
           )}
         </h2>
         <p className="text-gray-400 text-sm uppercase tracking-wide mt-2">
@@ -86,17 +97,38 @@ const ResultCard = ({ data, onRescan }) => {
               : "—")}
         </p>
 
-        {/* Key Issue Badge */}
         {isHighConfidence && aiData.is_key_issue && (
           <p className="text-yellow-400 text-xs mt-3 font-bold bg-yellow-400/10 inline-block px-2 py-1 rounded">★ KEY ISSUE</p>
         )}
       </div>
 
-      {/* CS-017: Removed Pricing UI Entirely */}
+      {/* CS-025: Pricing / Value Display */}
+      {/* Non-blocking: Simply show what we have */}
+      <div className="mb-8">
+        {isLoadingPrice ? (
+          <div className="text-center animate-pulse">
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Checking Value...</p>
+            <div className="h-8 w-32 bg-white/10 rounded mx-auto"></div>
+          </div>
+        ) : isPriceAvailable ? (
+          <div className="text-center">
+            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Estimated Value</p>
+            <div className="text-5xl font-black text-white tracking-tighter drop-shadow-neon">
+              ${priceValue}
+            </div>
+            <p className="text-[10px] text-gray-500 mt-2">Based on {pricingData.result.value.soft ? 'recent sales' : 'active listings'}</p>
+          </div>
+        ) : (
+          <div className="text-center">
+            <p className="text-gray-500 text-xs font-bold uppercase tracking-widest">Pricing Unavailable</p>
+            {/* CS-027: Even if unavailable, we enable Recent Sales below */}
+          </div>
+        )}
+      </div>
 
       {/* Actions */}
       <div className="grid grid-cols-1 gap-4 mb-4">
-        {/* CS-018: View Recent Sales (Real Link) */}
+        {/* CS-028: View Recent Sales (Real Link) */}
         <a
           href={recentSalesUrl}
           target="_blank"
@@ -116,7 +148,7 @@ const ResultCard = ({ data, onRescan }) => {
 
       {/* Disclaimer */}
       <p className="text-center text-[10px] text-gray-600 px-4 leading-tight mt-4">
-        Redirects to eBay sold listings for live market data.
+        Values are estimates based on "best guess" market data. Always verify with actual sales.
       </p>
     </div>
   );

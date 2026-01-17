@@ -45,6 +45,13 @@ export class OpenAIVisionProvider {
                 confidence: typeof result.confidence === 'number' ? result.confidence : 0.5
             };
 
+            // CS-026: Ensure displayName is always populated for UI consistency
+            if (candidate.seriesTitle) {
+                candidate.displayName = candidate.issueNumber
+                    ? `${candidate.seriesTitle} #${candidate.issueNumber}`
+                    : candidate.seriesTitle;
+            }
+
             const duration = Date.now() - startTime;
 
             // Filter out complete garbage (no title)

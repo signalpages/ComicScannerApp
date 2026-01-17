@@ -64,42 +64,105 @@ function trim(sorted) {
     return sorted.slice(drop, sorted.length - drop);
 }
 
-export async function priceComic({ seriesTitle, issueNumber }) {
-    const q = buildQuery(seriesTitle, issueNumber);
+export async function priceComic({ seriesTitle, issueNumber, year }) {
+    const start = Date.now();
+    let stage = "none";
+    let method = "none";
+    let resultValue = { typical: null, soft: null, slabs: null };
+    let resultEbay = { imageUrl: null };
+    let count = 0;
 
-    // 1) Browse active listings
-    const browse = await browseSearch({ q, limit: 50 });
-    const { prices, imageUrl, count } = extractCandidatePrices(browse, issueNumber);
+    // Helper to log metrics
+    const logMetric = (s, m, c) => {
+        const duration = Date.now() - start;
+        console.log(`[METRICS] type=pricing series="${seriesTitle}" issue="${issueNumber}" stage=${s} method=${m} results=${c} duration=${duration}ms`);
+    };
 
-    // Only use active listings if we have a decent sample
-    const MIN_ACTIVE_SAMPLE = 3;
-    const trimmed = trim(prices);
+    // 1. SOLD STRICT (Title + Issue + Year)
+    // Only if year is provided and reasonable
+    if (year && String(year).match(/^(19|20)\d{2}$/)) {
+        const strictQuery = `${seriesTitle} #${issueNumber} ${year} comic`;
+        const cacheKey = `sold:${seriesTitle}:${issueNumber}:${year}`.toLowerCase();
 
-    let typical = trimmed.length >= MIN_ACTIVE_SAMPLE ? percentile(trimmed, 0.50) : null;
-    let soft = trimmed.length >= MIN_ACTIVE_SAMPLE ? percentile(trimmed, 0.25) : null;
-
-    // 2) Sold-comps fallback
-    let slabs = null;
-
-    // If active listings are thin or missing, or explicitly check sold for better data
-    // We always check sold if active is low confidence
-    if (!typical || count < 10) {
-        const cacheKey = `sold:${seriesTitle}:${issueNumber}`.toLowerCase();
-        // Pass issueNumber to soldComps for strict checking
-        const sold = await soldComps({ query: `${seriesTitle} #${issueNumber} comic`, cacheKey, issueNumber });
-        typical = sold?.raw?.typical ?? typical;
-        soft = sold?.raw?.soft ?? soft;
-        slabs = sold?.slabs?.typical ?? null;
+        try {
+            const sold = await soldComps({ query: strictQuery, cacheKey, issueNumber });
+            if (sold?.raw?.count >= 10) {
+                stage = "sold_strict";
+                method = "scrape";
+                resultValue = {
+                    typical: sold.raw.typical ? Math.round(sold.raw.typical) : null,
+                    soft: sold.raw.soft ? Math.round(sold.raw.soft) : null,
+                    slabs: sold.slabs.typical ? Math.round(sold.slabs.typical) : null,
+                };
+                count = sold.raw.count;
+                logMetric(stage, method, count);
+                return { value: resultValue, ebay: resultEbay };
+            }
+        } catch (e) {
+            console.warn("Pricing Strict Error:", e);
+        }
     }
 
-    return {
-        value: {
-            typical: typical ? Math.round(typical) : null,
-            soft: soft ? Math.round(soft) : null,
-            slabs: slabs ? Math.round(slabs) : null,
-        },
-        ebay: {
-            imageUrl: imageUrl || null,
+    // 2. SOLD RELAXED (Title + Issue)
+    const relaxedQuery = `${seriesTitle} #${issueNumber} comic`;
+    const relaxedCacheKey = `sold:${seriesTitle}:${issueNumber}`.toLowerCase();
+
+    try {
+        const sold = await soldComps({ query: relaxedQuery, cacheKey: relaxedCacheKey, issueNumber });
+        if (sold?.raw?.count >= 6) {
+            stage = "sold_relaxed";
+            method = "scrape";
+            resultValue = {
+                typical: sold.raw.typical ? Math.round(sold.raw.typical) : null,
+                soft: sold.raw.soft ? Math.round(sold.raw.soft) : null,
+                slabs: sold.slabs.typical ? Math.round(sold.slabs.typical) : null,
+            };
+            count = sold.raw.count;
+            logMetric(stage, method, count);
+            return { value: resultValue, ebay: resultEbay };
         }
+    } catch (e) {
+        console.warn("Pricing Relaxed Error:", e);
+    }
+
+    // 3. ACTIVE LISTINGS (Browse API)
+    // Fallback if sold data is thin.
+    // We treat active "average" as a "typical" price, but maybe discount it slightly or just label it?
+    // The requirement says: "compute median asking price (label clearly)" -> we'll return it as typical but maybe frontend handles usage?
+    // For now, mapping to typical/soft structure.
+
+    try {
+        const q = buildQuery(seriesTitle, issueNumber);
+        const browse = await browseSearch({ q, limit: 50 });
+        const { prices, imageUrl, count: activeCount } = extractCandidatePrices(browse, issueNumber);
+
+        if (imageUrl) resultEbay.imageUrl = imageUrl;
+
+        if (activeCount >= 10) {
+            stage = "active";
+            method = "api";
+            // Simple percentile stats on asking prices
+            const typical = percentile(prices, 0.50);
+            const soft = percentile(prices, 0.25);
+
+            resultValue = {
+                typical: typical ? Math.round(typical) : null,
+                soft: soft ? Math.round(soft) : null,
+                slabs: null // Active scan doesn't separate slabs reliably in this helper yet
+            };
+            count = activeCount;
+            logMetric(stage, method, count);
+            return { value: resultValue, ebay: resultEbay };
+        }
+
+    } catch (e) {
+        console.warn("Pricing Active Error:", e);
+    }
+
+    // 4. UNAVAILABLE
+    logMetric("none", "none", 0);
+    return {
+        value: { typical: null, soft: null, slabs: null },
+        ebay: resultEbay
     };
 }
