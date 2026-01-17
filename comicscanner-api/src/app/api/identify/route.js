@@ -1,10 +1,8 @@
 import { z } from "zod";
-import OpenAI from "openai";
 import crypto from "crypto";
 import { redis } from "@/lib/redis";
 import { requireAnonId, enforceMonthlyQuota } from "@/lib/quota";
-
-const openai = new OpenAI();
+import { getVisionProvider } from "@/lib/vision/factory";
 
 const Body = z.object({
     image: z.string().min(10),
@@ -65,40 +63,8 @@ export async function POST(req) {
 
     // 5. Vision Identification
     try {
-        // ... (OpenAI Logic) ...
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                {
-                    role: "system",
-                    content: "You are a comic book expert. Identify the comic from the image. Return JSON ONLY: { \"seriesTitle\": string, \"issueNumber\": string, \"publisher\": string, \"year\": numberOrNull }. If uncertain, return null fields."
-                },
-                {
-                    role: "user",
-                    content: [
-                        { type: "text", text: "Identify this comic." },
-                        { type: "image_url", image_url: { url: `data:image/jpeg;base64,${parsed.data.image}` } }
-                    ]
-                }
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 300,
-        });
-
-        const content = completion.choices[0]?.message?.content;
-        if (!content) throw new Error("No content from OpenAI");
-
-        const result = JSON.parse(content);
-
-        const candidate = {
-            seriesTitle: result.seriesTitle || null,
-            issueNumber: result.issueNumber ? String(result.issueNumber) : null,
-            publisher: result.publisher || null,
-            year: result.year || null,
-            confidence: 1.0
-        };
-
-        const candidates = candidate.seriesTitle ? [candidate] : [];
+        const provider = getVisionProvider();
+        const candidates = await provider.identify(parsed.data.image);
 
         // 6. Store in Cache (if valid match found)
         if (candidates.length > 0) {
