@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { apiFetch } from "../lib/apiFetch";
-import { apiFetch } from "../lib/apiFetch";
 import { getInstallId, setInstallId } from "../lib/installId";
 import { Device } from "@capacitor/device";
 import { App as CapacitorApp } from "@capacitor/app";
