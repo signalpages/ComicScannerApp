@@ -1,22 +1,25 @@
 import { z } from "zod";
 import OpenAI from "openai";
+import crypto from "crypto";
+import { redis } from "@/lib/redis";
 import { requireAnonId, enforceMonthlyQuota } from "@/lib/quota";
 
-const openai = new OpenAI(); // Automatically uses OPENAI_API_KEY from env
+const openai = new OpenAI();
 
 const Body = z.object({
-    image: z.string().min(10), // Base64 image
+    image: z.string().min(10),
 });
 
+function hashImage(base64) {
+    return crypto.createHash("sha256").update(base64).digest("hex");
+}
+
 export async function POST(req) {
-    // 1. Auth & Quota Guard
+    // 1. Auth Check (Always required)
     const anonRes = await requireAnonId(req);
     if (!anonRes.ok) return Response.json(anonRes.body, { status: anonRes.status });
 
-    const quota = await enforceMonthlyQuota(anonRes.anon);
-    if (!quota.ok) return Response.json(quota.body, { status: quota.status });
-
-    // 2. Parse Body
+    // 2. Parse Body & Hash Image (Before Quota)
     let json;
     try {
         json = await req.json();
@@ -29,8 +32,32 @@ export async function POST(req) {
         return Response.json({ ok: false, code: "BAD_REQUEST", error: "Missing image data" }, { status: 400 });
     }
 
-    // 3. Vision Identification
+    const imageHash = hashImage(parsed.data.image);
+    const cacheKey = `identify:${imageHash}`;
+
+    // 3. Cache Lookup
     try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+            console.log(`[CACHE HIT] ${imageHash}`);
+            // Return cached result - bypass quota!
+            return Response.json({
+                ok: true,
+                candidates: cached,
+                cached: true
+            });
+        }
+    } catch (e) {
+        console.warn("Redis Error:", e);
+    }
+
+    // 4. Quota Check (Only on Cache Miss)
+    const quota = await enforceMonthlyQuota(anonRes.anon);
+    if (!quota.ok) return Response.json(quota.body, { status: quota.status });
+
+    // 5. Vision Identification
+    try {
+        // ... (OpenAI Logic) ...
         const completion = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [
@@ -55,31 +82,32 @@ export async function POST(req) {
 
         const result = JSON.parse(content);
 
-        // Normalize
         const candidate = {
             seriesTitle: result.seriesTitle || null,
             issueNumber: result.issueNumber ? String(result.issueNumber) : null,
             publisher: result.publisher || null,
             year: result.year || null,
-            confidence: 1.0 // Placeholder for now, assumed high if identified
+            confidence: 1.0
         };
 
-        // Filter out complete garbage (no title)
-        if (!candidate.seriesTitle) {
-            return Response.json({ ok: true, code: "NO_MATCH", candidates: [] });
+        const candidates = candidate.seriesTitle ? [candidate] : [];
+
+        // 6. Store in Cache (if valid match found)
+        if (candidates.length > 0) {
+            // Cache for 30 days
+            await redis.set(cacheKey, candidates, { ex: 60 * 60 * 24 * 30 });
         }
 
         return Response.json({
             ok: true,
-            candidates: [candidate]
+            candidates
         });
 
     } catch (error) {
         console.error("Vision Error:", error);
-        // Soft failure - never 500
         return Response.json({
             ok: true,
-            code: "VISION_ERROR", // informational
+            code: "VISION_ERROR",
             candidates: []
         });
     }
