@@ -1,6 +1,7 @@
-import { getDeviceId } from "./deviceId";
+import { getDeviceId, ensureInstallId } from "./deviceId";
 import { Capacitor } from "@capacitor/core";
 import { API_BASE_URL } from "../config"; // CS-206
+import { IAP } from "../services/iapBridge";
 
 /**
  * Wrapper around fetch to ensure deviceId is always included
@@ -8,14 +9,21 @@ import { API_BASE_URL } from "../config"; // CS-206
  * 
  * HARDENED: Now forces absolute paths for ALL relative URLs in native.
  */
-import { IAP } from "../services/iapBridge";
-
 export const apiFetch = async (url, options = {}) => {
+  // CS-208: Strict Identity Gating
+  // We must have a valid installId before talking to the backend.
+  const installId = await ensureInstallId();
+
+  if (!installId) {
+    console.error("[API] Blocked: No Install ID Available");
+    throw new Error("Initializing app identity...");
+  }
+
   const isEntitled = await IAP.isEntitled().catch(() => false);
 
   const defaultHeaders = {
     "Content-Type": "application/json",
-    "x-install-id": getDeviceId(), // SS-004: Always send canonical ID
+    "x-install-id": installId, // Always strictly valid
     ...(isEntitled ? { "x-entitlement-status": "active" } : {})
   };
 

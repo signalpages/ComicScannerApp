@@ -53,25 +53,31 @@ export async function POST(req) {
     let installId = null;
 
     // 3. Upsert / Resolve Identity
+    // CS-208: Strict Identity Support
+    // If client sends a valid UUID (candidate), we trust it and create/upsert it.
     if (clientInstallId && uuidRegex.test(clientInstallId)) {
-        // A. Valid UUID provided -> Upsert Last Seen
+
+        // Try to UPSERT based on 'install_id'
+        // If it exists, update last_seen.
+        // If it doesn't exist, we want to INSERT it with that ID.
+
         const { data, error } = await supabaseAdmin
             .from('installs')
-            .update({
+            .upsert({
+                install_id: clientInstallId, // Trust client UUID
+                device_id: deviceId || null,
                 last_seen_at: new Date().toISOString(),
                 last_headers: debugHeaders,
                 app_version: appVersion,
                 platform: platform
-            })
-            .eq('install_id', clientInstallId) // Supabase DB uses snake_case 'install_id'
-            .select('install_id') // Select install_id (DB column)
+            }, { onConflict: 'install_id' }) // Conflict on PK
+            .select('install_id')
             .single();
 
         if (data && !error) {
             installId = data.install_id;
         } else {
-            // If update failed (ID didn't exist?), fall through to create
-            console.warn(`[Install] Client claimed ID ${clientInstallId} but not found in DB.`);
+            console.error("[Install] Upsert failed for clientID", error);
         }
     }
 
