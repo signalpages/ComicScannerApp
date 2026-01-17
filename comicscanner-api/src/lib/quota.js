@@ -26,8 +26,8 @@ export async function requireAnonId(req) {
     return { ok: true, anon };
 }
 
-export async function enforceMonthlyQuota(anon) {
-    if (unlimitedSet.has(anon)) return { ok: true, remaining: Number.MAX_SAFE_INTEGER, unlimited: true };
+export async function enforceMonthlyQuota(anon, isPaid = false) {
+    if (unlimitedSet.has(anon) || isPaid) return { ok: true, remaining: Number.MAX_SAFE_INTEGER, unlimited: true };
 
     const limit = Number(process.env.MONTHLY_SCAN_LIMIT || DEFAULT_LIMIT);
     const key = `quota:${anon}:${monthKey()}`;

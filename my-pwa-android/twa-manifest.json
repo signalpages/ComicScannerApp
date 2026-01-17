@@ -13,7 +13,7 @@
   "backgroundColor": "#0A0A12",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "http://192.168.1.77:5173/pwa-512x512.png",
+  "iconUrl": "http://192.168.1.77:5173/placeholder-cover.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "bubblewrap init --manifest=\"C:\\Users\\David B\\ComicScannerApp\\public\\manifest.json\"",

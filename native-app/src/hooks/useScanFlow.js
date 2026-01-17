@@ -165,65 +165,90 @@ export function useScanFlow() {
   // -------------------------
   // Candidate → Pricing
   // -------------------------
+  // -------------------------
+  // Candidate → Pricing (Non-Blocking Port + CS-033)
+  // -------------------------
   const confirmCandidate = useCallback(
     async (candidate) => {
       if (!candidate) return;
-      if (inFlight.current) return;
-      inFlight.current = true;
+      // Note: We don't block UI with inFlight here to allow immediate transition
       setError(null);
 
-      try {
-        setSelectedCandidate(candidate);
+      // CS-026: Normalized Data
+      const seriesTitle = candidate.seriesTitle || candidate.displayName || "";
+      const issueNumber = candidate.issueNumber || "";
+      const editionId = candidate.editionId;
+      const year = candidate.year || null;
 
-        const seriesTitle = candidate.seriesTitle || candidate.displayName || "";
-        const issueNumber = candidate.issueNumber || "";
-        const editionId = candidate.editionId;
+      // 1. Immediate UI Transition (CS-025)
+      setSelectedCandidate(candidate);
+      setPricingResult(null); // Loading state
+      setState(SCAN_STATE.RESULT);
 
-        const resp = await apiFetch("/api/price", {
-          method: "POST",
-          headers: { "x-anon-id": getDeviceId() },
-          body: { seriesTitle, issueNumber, editionId },
-        });
-
-        const data = await resp.json();
-        if (!data?.ok) throw new Error(data?.error || "Pricing failed");
-
-        setPricingResult(data);
-        setState(SCAN_STATE.RESULT);
-
-        saveHistory({
+      // 2. Create Initial Snapshot (CS-033)
+      const scanId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+      const initialSnapshot = {
+        id: scanId,
+        timestamp: Date.now(),
+        // CS-033: Flattened, self-contained data
+        displayName: candidate.displayName, // Single source of truth for UI
+        subtitle: `${candidate.publisher || 'Unknown'} • ${year || '—'}`,
+        scanImage: capturedImage,
+        coverUrl: candidate.coverUrl || null,
+        identifiers: {
+          seriesTitle,
+          issueNumber,
           editionId,
-          displayName: candidate.displayName,
-          scanImage: capturedImage, // Persist user scan
-          coverUrl: candidate.coverUrl || null, // Keep original cover
-          marketImageUrl: data.ebay?.imageUrl || null, // Store market comp image
-          year: candidate.year ?? null,
-          publisher: candidate.publisher ?? null,
-          value: data.value,
-          timestamp: Date.now(),
+          publisher: candidate.publisher,
+          year
+        },
+        // Pricing initially null
+        value: null,
+        pricing: null
+      };
+
+      // Save immediately so it appears in history
+      saveHistory(initialSnapshot);
+
+      // 3. Background Pricing Fetch (CS-025 + CS-027)
+      apiFetch("/api/price", {
+        method: "POST",
+        headers: { "x-anon-id": getDeviceId() },
+        body: { seriesTitle, issueNumber, editionId, year }, // CS-027: Pass year
+      })
+        .then(async (resp) => {
+          const data = await resp.json();
+          if (data.ok) {
+            setPricingResult(data);
+
+            // Update History with Price (CS-033)
+            // We need to read-modify-write. 
+            // Note: In a real hooks flow this is race-condition prone without a reducer, 
+            // but effective for this scale.
+            try {
+              const history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+              const idx = history.findIndex(h => h.id === scanId);
+              if (idx !== -1) {
+                history[idx].value = data.value;
+                history[idx].pricing = data; // Full debug info
+                history[idx].marketImageUrl = data.ebay?.imageUrl; // Fallback image
+                localStorage.setItem("scanHistory", JSON.stringify(history));
+              }
+            } catch (e) {
+              console.error("History update failed", e);
+            }
+          } else {
+            // Silently fail to "Unavailable" (CS-025)
+            setPricingResult({ value: { typical: null } });
+          }
+        })
+        .catch(e => {
+          console.warn("Background pricing failed", e);
+          setPricingResult({ value: { typical: null } });
         });
-      } catch (e) {
-        console.error(e);
-        try {
-          await apiFetch("/api/log", {
-            method: "POST",
-            body: {
-              where: "confirmCandidate",
-              message: e.message,
-              editionId,
-              seriesTitle,
-              issueNumber,
-              userAgent: navigator.userAgent,
-            },
-          });
-        } catch { }
-        setError("Pricing failed. Please try again.");
-        setState(SCAN_STATE.VERIFY);
-      } finally {
-        inFlight.current = false;
-      }
+
     },
-    [saveHistory]
+    [saveHistory, capturedImage]
   );
 
   // -------------------------

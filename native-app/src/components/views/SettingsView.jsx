@@ -94,6 +94,9 @@ const SettingsView = ({ onBack, onCopyId }) => {
                 >
                     <code className="text-[10px] text-gray-500 font-mono tracking-wider">{getDeviceId()}</code>
                 </div>
+                <p className="text-[10px] text-gray-600 mt-2 max-w-xs mx-auto">
+                    CS-031: ID resets if app data is cleared.
+                </p>
                 {process.env.BUILD_TIMESTAMP && (
                     <div className="text-[10px] text-gray-700 mt-4 opacity-70">
                         Build: {process.env.BUILD_TIMESTAMP}

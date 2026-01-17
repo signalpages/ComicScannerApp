@@ -13,7 +13,7 @@
   "backgroundColor": "#0A0A12",
   "enableNotifications": true,
   "startUrl": "/",
-  "iconUrl": "https://comic-scanner-app-three.vercel.app/pwa-512x512.png",
+  "iconUrl": "https://comic-scanner-app-three.vercel.app/placeholder-cover.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "C:\\Users\\David B\\comicscannerapp\\android.keystore",

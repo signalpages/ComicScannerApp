@@ -44,3 +44,12 @@ h6 {
 .text-gradient {
   @apply bg-gradient-to-r from-neon-blue to-neon-purple bg-clip-text text-transparent;
 }
+
+/* CS-034: Safe Area Utilities */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 20px);
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 20px);
+}

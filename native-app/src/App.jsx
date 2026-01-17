@@ -10,7 +10,7 @@ import SettingsView from "./components/views/SettingsView";
 import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
 
 import { IAP } from "./services/iapBridge";
-import { getDeviceId } from "./lib/deviceId";
+import { getDeviceId, initializeDeviceId } from "./lib/deviceId";
 import { App as CapacitorApp } from '@capacitor/app';
 
 function App() {
@@ -33,7 +33,18 @@ function App() {
     setTimeout(() => setToast(null), 2500);
   }, []);
 
-  const deviceId = getDeviceId();
+  // CS-029 & CS-030 Initializer
+  const [deviceId, setDeviceId] = useState(getDeviceId());
+
+  useEffect(() => {
+    // 1. Initialize Persistent ID
+    initializeDeviceId().then(id => setDeviceId(id));
+
+    // 2. Check Entitlements (CS-030)
+    // For now, we just ensure IAP bridge is ready. 
+    // In a real app, we'd enable a "Premium" mode state here.
+    // The apiFetch logic will pull from IAP.isEntitled() dynamically.
+  }, []);
 
   const copyDeviceId = () => {
     navigator.clipboard.writeText(deviceId);
@@ -229,6 +240,7 @@ function App() {
                 </button>
               </div>
               <p className="text-[10px] text-gray-600 mt-2 leading-tight">
+                CS-031: ID resets if app data is cleared.
                 Share this only if support asks for it.
               </p>
             </div>

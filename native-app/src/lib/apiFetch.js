@@ -1,101 +1,120 @@
-import { getDeviceId } from './deviceId';
-import { Capacitor } from '@capacitor/core';
+import { getDeviceId } from "./deviceId";
+import { Capacitor } from "@capacitor/core";
 
 /**
- * Wrapper around fetch to ensure deviceId is always included in POST bodies.
- * @param {string} url 
- * @param {object} options 
- * @returns {Promise<Response>}
+ * Wrapper around fetch to ensure deviceId is always included
+ * and native builds always hit the production backend.
+ * 
+ * HARDENED: Now forces absolute paths for ALL relative URLs in native.
  */
+import { IAP } from "../services/iapBridge";
+
 export const apiFetch = async (url, options = {}) => {
-    const defaultHeaders = {
-        'Content-Type': 'application/json'
-    };
+  const isEntitled = await IAP.isEntitled().catch(() => false);
 
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+    ...(isEntitled ? { "x-entitlement-status": "active" } : {})
+  };
 
-    // --------------------------------------------------------
-    // ✅ CRITICAL FIX: Detect Native Runtime & Use Prod URL
-    // --------------------------------------------------------
-    const isNative = Capacitor.isNativePlatform();
-    // Vercel URL hidden from UI, used ONLY internally in native environment
-    const PROD_API_BASE = "https://comicscanner-api.vercel.app";
+  // --------------------------------------------------------
+  // ✅ Native-safe API base resolution (Hardened)
+  // --------------------------------------------------------
+  const isNative = Capacitor.isNativePlatform();
+  const PROD_API_BASE = "https://comicscanner-api.vercel.app";
 
-    // If native (Android/iOS), force full URL. Otherwise use relative (proxy).
-    let finalUrl = url;
-    if (isNative && url.startsWith('/')) {
-        finalUrl = `${PROD_API_BASE}${url}`;
+  let finalUrl = url;
+
+  // Logic: 
+  // 1. If absolute URL (http/https), use as-is.
+  // 2. If native, force PROD_API_BASE + normalized path.
+  // 3. If web, allow relative paths (browser handles proxy/origin).
+
+  const isAbsolute = /^https?:\/\//i.test(url);
+
+  if (isNative && !isAbsolute) {
+    // Normalize path to ensure leading slash
+    const path = url.startsWith("/") ? url : `/${url}`;
+    finalUrl = `${PROD_API_BASE}${path}`;
+  }
+
+  // --------------------------------------------------------
+  // ✅ Logging for Diagnostics
+  // --------------------------------------------------------
+  if (isNative) {
+    console.log(`[API REQUEST] ${finalUrl} (Original: ${url})`);
+  }
+
+  const config = {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+      ...(process.env.NODE_ENV !== "production"
+        ? { "x-dev-bypass": "1" }
+        : {}),
+    },
+  };
+
+  // --------------------------------------------------------
+  // ✅ Auto-inject deviceId for POST JSON bodies
+  // --------------------------------------------------------
+  if (
+    config.method === "POST" &&
+    config.headers["Content-Type"] === "application/json"
+  ) {
+    let body = {};
+
+    if (config.body) {
+      try {
+        body =
+          typeof config.body === "string"
+            ? JSON.parse(config.body)
+            : config.body;
+      } catch {
+        body = config.body;
+      }
     }
 
-    const config = {
-        ...options,
-        headers: {
-            ...defaultHeaders,
-            ...options.headers,
-            // Header Dev Bypass (only works in non-production)
-            ...(process.env.NODE_ENV !== 'production' ? { "x-dev-bypass": "1" } : {})
-        }
-    };
+    if (typeof body === "object" && body !== null) {
+      const deviceId = getDeviceId();
+      body.deviceId = deviceId;
+      body.device_id = deviceId;
+      config.body = JSON.stringify(body);
+    }
+  }
 
-    // Auto-inject deviceId for POST requests
-    if (config.method === 'POST' && config.headers['Content-Type'] === 'application/json') {
-        let body = {};
-        if (config.body) {
-            try {
-                body = typeof config.body === 'string' ? JSON.parse(config.body) : config.body;
-            } catch (e) {
-                console.warn('apiFetch: parsing body failed', e);
-                body = config.body;
-            }
-        }
+  let response;
+  try {
+    response = await fetch(finalUrl, config);
+  } catch (err) {
+    if (isNative) {
+      console.error("[API NETWORK ERROR]", err);
+    }
+    throw new Error("Network error. Please check your connection.");
+  }
 
-        // If body turned out to be an object (or we successfully parsed it)
-        if (typeof body === 'object' && body !== null) {
-            const deviceId = getDeviceId();
+  // --------------------------------------------------------
+  // ✅ Safe response handling (no HTML crashes)
+  // --------------------------------------------------------
+  const contentType = response.headers.get("content-type") || "";
 
-            // Inject distinct device IDs
-            body.deviceId = deviceId;
-            body.device_id = deviceId; // snake_case backup
-
-            config.body = JSON.stringify(body);
-        }
+  if (!response.ok || !contentType.includes("application/json")) {
+    let snippet = "";
+    try {
+      snippet = (await response.text()).slice(0, 200);
+    } catch {
+      snippet = "[unreadable]";
     }
 
     if (isNative) {
-        console.log(`[API REQUEST] ${url} (Resolved internally)`);
+      console.error(
+        `[API ERROR] ${response.status} ${contentType}\n${snippet}`
+      );
     }
 
-    let response;
-    try {
-        response = await fetch(finalUrl, config);
-    } catch (netError) {
-        // Network failure (offline, DNS, etc.)
-        if (isNative) console.error(`[API NETWORK ERROR] ${netError.message}`);
-        throw new Error("Network error. Please check your connection.");
-    }
+    throw new Error("Service temporarily unavailable. Please try again.");
+  }
 
-    // --------------------------------------------------------
-    // ✅ CRITICAL FIX: Safe Response Handling (No HTML Crashes)
-    // --------------------------------------------------------
-    const contentType = response.headers.get("content-type") || "";
-
-    // 1. Check fail conditions
-    if (!response.ok || !contentType.includes("application/json")) {
-        let errorSnippet = "";
-        try {
-            const text = await response.text();
-            errorSnippet = text.slice(0, 200);
-        } catch (e) { errorSnippet = "[Read Failed]"; }
-
-        if (isNative) {
-            console.error(`[API ERROR] Status: ${response.status} | Type: ${contentType}`);
-            // Log snippet only to console, NEVER expose to UI
-            console.error(`[API ERROR SNIPPET] ${errorSnippet}`);
-        }
-
-        // Generic user-safe message
-        throw new Error("Service temporarily unavailable. Please try again.");
-    }
-
-    // 2. If valid JSON, return response (caller expects to call .json())
-    return response;
+  return response;
 };

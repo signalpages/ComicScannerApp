@@ -17,6 +17,9 @@ export async function POST(req) {
     const anonRes = await requireAnonId(req);
     if (!anonRes.ok) return Response.json(anonRes.body, { status: anonRes.status });
 
+    // CS-030: Check Entitlement Header
+    const isPaid = req.headers.get("x-entitlement-status") === "active";
+
     // 2. Parse Body & Hash Image (Before Quota)
     let json;
     try {
@@ -51,7 +54,8 @@ export async function POST(req) {
     }
 
     // 4. Quota Check (Only on Cache Miss)
-    const quota = await enforceMonthlyQuota(anonRes.anon);
+    // CS-030: Pass isPaid flag
+    const quota = await enforceMonthlyQuota(anonRes.anon, isPaid);
     if (!quota.ok) {
         console.log(`[QUOTA EXCEEDED] ${anonRes.anon}`);
         // Soft failure: Return 200 OK with SCAN_LIMIT_REACHED code so client shows Paywall
