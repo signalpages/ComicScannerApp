@@ -267,17 +267,17 @@ function App() {
               <div className="mt-10">
                 <div className="flex justify-between items-end mb-4 px-1">
                   <h3 className="text-gray-500 uppercase font-bold text-xs">Recent Scans</h3>
-                  <button onClick={clearHistory} className="text-xs text-gray-500 hover:text-white underline">
+                  <button onClick={actions.clearHistory} className="text-xs text-gray-500 hover:text-white underline">
                     Clear
                   </button>
                 </div>
                 <div className="space-y-3">
-                  {history.map((item, idx) => {
+                  {history.map((item) => {
                     // Long press logic
                     let pressTimer = null;
                     const startPress = () => {
                       pressTimer = setTimeout(() => {
-                        deleteHistoryItem(item);
+                        actions.deleteHistoryItem(item.id);
                       }, 800);
                     };
                     const cancelPress = () => {
@@ -286,7 +286,7 @@ function App() {
 
                     return (
                       <div
-                        key={idx}
+                        key={item.id} // Stable Key
                         className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5 active:bg-red-500/10 transition-colors select-none"
                         onClick={() => actions.openHistoryItem(item)}
                         onMouseDown={startPress}
@@ -306,7 +306,11 @@ function App() {
                         </div>
                         <div>
                           <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
-                          <p className="text-neon-blue text-xs font-mono">{formatCurrency(item.value?.typical)}</p>
+                          <p className="text-neon-blue text-xs font-mono">
+                            {typeof item.value?.typical === 'number'
+                              ? formatCurrency(item.value.typical)
+                              : ''}
+                          </p>
                         </div>
                       </div>
                     );

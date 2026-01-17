@@ -59,30 +59,11 @@ export const apiFetch = async (url, options = {}) => {
   // --------------------------------------------------------
   // ✅ Auto-inject deviceId for POST JSON bodies
   // --------------------------------------------------------
-  if (
-    config.method === "POST" &&
-    config.headers["Content-Type"] === "application/json"
-  ) {
-    let body = {};
-
-    if (config.body) {
-      try {
-        body =
-          typeof config.body === "string"
-            ? JSON.parse(config.body)
-            : config.body;
-      } catch {
-        body = config.body;
-      }
-    }
-
-    if (typeof body === "object" && body !== null) {
-      const deviceId = getDeviceId();
-      body.deviceId = deviceId;
-      body.device_id = deviceId;
-      config.body = JSON.stringify(body);
-    }
-  }
+  // --------------------------------------------------------
+  // ✅ Auto-inject deviceId for POST JSON bodies (REMOVED CS-302)
+  // --------------------------------------------------------
+  // We now rely exclusively on x-install-id header.
+  // Legacy injection removed to prevent "dev_init_pending" pollution.
 
   let response;
   try {

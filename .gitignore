@@ -31,3 +31,8 @@ next-env.d.ts
 # Android/Gradle junk
 .gradle/
 **/.gradle/
+
+# Large archives
+*.zip
+*.aab
+*.apk

@@ -19,14 +19,22 @@ export async function POST(req) {
         pricing
     } = body;
 
-    if (!installId || !selectedCandidate) {
+    // CS-302: Trust Header First (if middleware validated it)
+    let effectiveInstallId = installId;
+    const headerId = req.headers.get("x-install-id");
+
+    // If header exists and is valid, prefer it (or ensure match)
+    // Middleware CS-208 already guards this route for validity.
+    if (headerId) effectiveInstallId = headerId;
+
+    if (!effectiveInstallId || !selectedCandidate) {
         return Response.json({ ok: false, error: "Missing required fields" }, { status: 400 });
     }
 
     // CS-054: Validate UUID
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(installId)) {
-        console.warn(`[WARN] bad_install_id: ${installId}`);
+    if (!uuidRegex.test(effectiveInstallId)) {
+        console.warn(`[WARN] bad_install_id: ${effectiveInstallId}`);
         return Response.json({ ok: false, code: "BAD_INSTALL_ID", error: "Invalid Install ID format" }, { status: 400 });
     }
 
@@ -50,7 +58,7 @@ export async function POST(req) {
     const { data, error } = await supabaseAdmin
         .from('saved_scans')
         .insert({
-            install_id: installId, // Clean from body (already validated UUID)
+            install_id: effectiveInstallId, // Clean from body or header (already validated UUID)
             // CS-046: Use normalized fields
             display_name: cleanData.displayName || selectedCandidate.displayName || "Unknown Comic",
             series_title: cleanData.seriesTitle,

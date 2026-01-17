@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { apiFetch } from "../lib/apiFetch";
-import { getDeviceId } from "../lib/deviceId";
+import { getDeviceId, ensureInstallId } from "../lib/deviceId";
 
 export const SCAN_STATE = {
   HOME: "HOME",
@@ -39,8 +39,9 @@ export function useScanFlow() {
   // Fetch history on mount / deviceId change
   useEffect(() => {
     const loadHistory = async () => {
-      const id = getDeviceId();
-      if (!id || id.startsWith('dev_')) return; // Wait for real ID
+      // CS-302: Identity Persistence
+      const id = await ensureInstallId();
+      if (!id) return;
 
       try {
         const res = await apiFetch(`/api/saved-scans?installId=${id}&limit=20`);
@@ -49,9 +50,9 @@ export function useScanFlow() {
           if (data.ok && data.items) {
             // Map snake_case to UI model
             const mapped = data.items.map(item => ({
-              id: item.id,
+              id: item.id, // Stable UUID from DB
               displayName: item.display_name,
-              scanImage: item.scan_thumb_base64 || item.scan_thumb_url, // Prefer thumb
+              scanImage: item.scan_thumb_base64 || item.scan_thumb_url,
               coverUrl: item.cover_url,
               value: item.raw_pricing?.value || null,
               timestamp: new Date(item.created_at).getTime(),
@@ -78,49 +79,24 @@ export function useScanFlow() {
     loadHistory();
   }, [state]); // Reload when state changes (e.g. after save)
 
-  const saveHistory = useCallback(async (snapshot) => {
-    // Optimistic Update
-    setHistory(prev => [snapshot, ...prev]);
-
-    // Async Cloud Save
-    try {
-      const id = getDeviceId();
-      if (!id) return;
-
-      await apiFetch("/api/saved-scans", {
-        method: "POST",
-        body: {
-          installId: id,
-          selectedCandidate: snapshot.identifiers,
-          confidence: 1.0,
-          scanThumb: snapshot.scanImage,
-          // API will take it.
-          pricing: null // Initially null
-        }
-      });
-    } catch (e) {
-      console.error("Cloud Save Failed", e);
-    }
-  }, []);
-
   // -------------------------
-  // Core flow helpers
+  // Core flow helpers (CS-301)
   // -------------------------
   const resetFlow = useCallback(() => {
+    // 1. Force Clean State
     setError(null);
     setCapturedImage(null);
     setCandidates([]);
     setSelectedCandidate(null);
     setPricingResult(null);
     setQuotaStatus(null);
-    setState(SCAN_STATE.HOME);
     inFlight.current = false;
-
-    // Refresh history when returning home
-    // (useEffect depending on 'state' will handle it)
-
     captureLockRef.current = false;
     lastCaptureTsRef.current = 0;
+
+    // 2. Navigation Safety
+    // Ensure we are truly aiming for HOME
+    setState(SCAN_STATE.HOME);
   }, []);
 
   const openSettings = useCallback(() => {
@@ -133,6 +109,17 @@ export function useScanFlow() {
     clearError();
     setState(SCAN_STATE.CAMERA);
   }, [clearError]);
+
+  // CS-301: Added missing history actions
+  const clearHistory = useCallback(async () => {
+    setHistory([]);
+    // TODO: Could call API DELETE endpoint if implemented
+  }, []);
+
+  const deleteHistoryItem = useCallback((id) => {
+    setHistory(prev => prev.filter(i => i.id !== id));
+    // TODO: call API DELETE /saved-scans/:id
+  }, []);
 
   // -------------------------
   // Identification → Candidates
@@ -232,10 +219,12 @@ export function useScanFlow() {
       setPricingResult(null);
       setState(SCAN_STATE.RESULT);
 
-      // 2. Prepare Snapshot Data
-      // For UI Optimistic Update
+      // 2. Prepare Snapshot Data (CS-303 Stable ID)
+      // Use editionId + timestamp to ensure uniqueness per scan event, but stable for list
+      const snapshotId = `${editionId}:${Date.now()}`;
+
       const snapshot = {
-        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+        id: snapshotId,
         displayName: candidate.displayName,
         scanImage: capturedImage,
         coverUrl: candidate.coverUrl,
@@ -246,19 +235,21 @@ export function useScanFlow() {
 
       setHistory(prev => [snapshot, ...prev]);
 
-      // 3. Initiate Cloud Save & Pricing Parallel
+      // 3. Initiate Cloud Save & Pricing Parallel (CS-302)
       const savePromise = (async () => {
-        const id = getDeviceId();
-        // Save to Supabase (SS-007)
+        // Use ensureInstallId directly (although apiFetch calls it too, 
+        // calling it here ensures we don't start specific logic until ready)
+        // Actually apiFetch handles it, but we need it for the 'body' if we were sending it.
+        // CS-302 says: "DO NOT send installId unless backend truly requires it"
+        // So we remove installId from body.
+
         return apiFetch("/api/saved-scans", {
           method: "POST",
           body: {
-            installId: id,
-            selectedCandidate: candidate, // Full candidate
-            confidence: 1.0, // Simplified
-            scanThumb: capturedImage, // Can be large, maybe truncate or handled by API?
-            // API will take it.
-            pricing: null // Initially null
+            selectedCandidate: candidate,
+            confidence: 1.0,
+            scanThumb: capturedImage,
+            pricing: null
           }
         }).catch(e => console.error("Cloud Save Failed", e));
       })();
@@ -268,25 +259,30 @@ export function useScanFlow() {
         method: "POST",
         body: { seriesTitle, issueNumber, editionId, year },
       }).then(async (resp) => {
+        // CS-303: Soft Fail Pricing
         const data = await resp.json();
+
+        // If pricing is available/unavailable (200 OK)
         if (data.ok) {
           setPricingResult(data);
-          // In a fuller implementation, we would now PATCH the saved_scan with the price.
-          // For now, we rely on the fact that if user re-opens, we might re-price or just see the initial snapshot?
-          // "History list... shows correct title + thumb". Price not explicitly listed as MUST in list view in SS-007 B.
-          // But usually we want it.
-          // We'll update local state at least.
+
+          // Update History with Value
           setHistory(prev => {
             const copy = [...prev];
-            const idx = copy.findIndex(i => i.id === snapshot.id);
+            const idx = copy.findIndex(i => i.id === snapshotId);
             if (idx !== -1) {
-              copy[idx].value = data.value;
+              copy[idx] = { ...copy[idx], value: data.value }; // Merge value
             }
             return copy;
           });
         } else {
+          // 200 OK but available: false
           setPricingResult({ value: { typical: null } });
         }
+      }).catch(err => {
+        // Network fail on pricing - Soft Fail (CS-303)
+        console.warn("[Pricing] Failed softly", err);
+        setPricingResult({ value: { typical: null } });
       });
 
       await Promise.allSettled([savePromise, pricePromise]);
@@ -331,6 +327,7 @@ export function useScanFlow() {
   const openHistoryItem = useCallback((item) => {
     setCapturedImage(item.scanImage || null);
 
+    // CS-303: Fix ResultCard population
     setSelectedCandidate({
       editionId: item.editionId,
       displayName: item.displayName,
@@ -342,10 +339,8 @@ export function useScanFlow() {
       issueNumber: item.issueNumber
     });
 
-    // If we have stored pricing, show it. Otherwise maybe trigger re-price?
-    // SS-008 says "Pricing cache works".
-    // For now use what we have.
-    setPricingResult({ ok: true, editionId: item.editionId, value: item.value, comps: [] });
+    // Use stored value or null placeholder
+    setPricingResult(item.value ? { value: item.value } : { value: { typical: null } });
     setState(SCAN_STATE.RESULT);
   }, []);
 
@@ -353,12 +348,7 @@ export function useScanFlow() {
   const loadScanById = useCallback(async (id) => {
     if (!id) return;
     try {
-      // Show loading state
-      setState(SCAN_STATE.RESULT); // Or a specific LOADING state? ResultCard handles loading if data is partial? 
-      // Actually ResultCard expects data. Let's maybe show a loader or just RESULT with placeholders?
-      // Better: Fetch first, show spinner globally? 
-      // For now, let's use PRICING state as a "Loading" proxy or just wait?
-      // User requirement: "Result screen must... read savedScanId... fetch... render"
+      setState(SCAN_STATE.RESULT);
 
       const res = await apiFetch(`/api/saved-scans/${id}`);
       if (!res.ok) throw new Error("Scan not found");
@@ -367,7 +357,6 @@ export function useScanFlow() {
 
       const item = json.item; // Normalized backend response
 
-      // Map to UI model (Consistency with loadHistory mapping)
       const mappedCandidate = {
         editionId: item.raw_candidate?.editionId,
         displayName: item.display_name,
@@ -382,7 +371,6 @@ export function useScanFlow() {
       setCapturedImage(item.scan_thumb_base64 || item.scan_thumb_url);
       setSelectedCandidate(mappedCandidate);
 
-      // If pricing exists
       if (item.raw_pricing) {
         setPricingResult({ ok: true, value: item.raw_pricing.value });
       } else {
@@ -406,7 +394,7 @@ export function useScanFlow() {
     selectedCandidate,
     pricingResult,
     quotaStatus,
-    history, // SS-007: Expose History
+    history,
     actions: {
       startCamera,
       captureImage,
@@ -419,6 +407,8 @@ export function useScanFlow() {
       openHistoryItem,
       loadScanById,
       openSettings,
+      clearHistory, // CS-301
+      deleteHistoryItem // CS-301
     },
   };
 }
