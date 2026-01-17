@@ -13,11 +13,12 @@ export const apiFetch = async (url, options = {}) => {
   // CS-303: Strict Identity Gating via installId.js
   const installId = await getInstallId();
 
-  if (!installId && !url.includes("/api/install")) {
+  if (!installId && !url.includes("/api/install") && !url.includes("/api/search")) {
     // Determine if this is a critical block or if we auto-init?
     // User Guide says: "Update apiFetch to always send x-install-id".
     // If it's missing, we probably should block or fail, but /api/install itself must pass.
-    console.error("[API] Blocked: No Install ID (and not /api/install)");
+    // CS-310: Manual Search is allowed without ID status
+    console.error("[API] Blocked: No Install ID (and not /api/install or /api/search)");
     throw new Error("Initializing app identity...");
   }
 

@@ -28,6 +28,7 @@ function App() {
     pricingResult,
     quotaStatus,
     history, // SS-007
+    identityStatus, // CS-310
     actions
   } = useScanFlow();
 
@@ -242,6 +243,12 @@ function App() {
               >
                 COMIC<span className="text-neon-blue shadow-neon">SCAN</span>
               </h1>
+              {identityStatus === "loading" && (
+                <p className="text-xs text-neon-blue/50 animate-pulse font-mono mb-1">CONNECTING...</p>
+              )}
+              {identityStatus === "error" && (
+                <p className="text-xs text-red-400 font-mono mb-1">OFFLINE MODE</p>
+              )}
               <p className="text-blue-200/70 text-sm">Scan any comic to instantly see what it's worth!</p>
             </header>
 

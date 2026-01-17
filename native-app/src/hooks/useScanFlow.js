@@ -27,6 +27,15 @@ export function useScanFlow() {
   const [pricingResult, setPricingResult] = useState(null);
   const [quotaStatus, setQuotaStatus] = useState(null);
 
+  // CS-310: Identity Status
+  // "idle" | "loading" | "ready" | "error"
+  const [identityStatus, setIdentityStatus] = useState("loading");
+  const [identityError, setIdentityError] = useState(null);
+
+  // CS-311: Queued Scan
+  // If user captures before identity is ready, we store base64 here
+  const [pendingCapture, setPendingCapture] = useState(null);
+
   const inFlight = useRef(false);
 
   // ✅ NEW: capture-level guard to prevent double-trigger (touch + click, etc.)
@@ -38,15 +47,18 @@ export function useScanFlow() {
   // -------------------------
   const [history, setHistory] = useState([]);
 
-  // Fetch history on mount / initialization (CS-303)
+  // Fetch history on mount / initialization (CS-303 / CS-310)
   useEffect(() => {
     const initAndLoad = async () => {
-      let id = await getInstallId();
+      setIdentityStatus("loading");
+      let id = null;
 
-      // 1. Initialize logic if no ID exists (CS-303)
-      if (!id) {
-        try {
-          // Get Metadata
+      try {
+        // 1. Check local persistence first
+        id = await getInstallId();
+
+        if (!id) {
+          // Handshake (Non-blocking UI, but status is loading)
           const info = await Device.getInfo().catch(() => ({ platform: 'web' }));
           const appInfo = await CapacitorApp.getInfo().catch(() => ({ version: '1.0.0' }));
 
@@ -66,49 +78,62 @@ export function useScanFlow() {
               console.log("[Init] New Install ID registered:", id);
             }
           }
-        } catch (e) {
-          console.warn("[Init] Handshake failed, history may be unavailable until online.", e);
-        }
-      }
-
-      if (!id) return; // Still strict, don't load history if no ID (prevent bad calls)
-
-      // 2. Load History
-      try {
-        const res = await apiFetch(`/api/saved-scans?installId=${id}&limit=20`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.ok && data.items) {
-            // Map snake_case to UI model
-            const mapped = data.items.map(item => ({
-              id: item.id, // Stable UUID from DB
-              displayName: item.display_name,
-              scanImage: item.scan_thumb_base64 || item.scan_thumb_url,
-              coverUrl: item.cover_url,
-              value: item.raw_pricing?.value || null,
-              timestamp: new Date(item.created_at).getTime(),
-
-              // Rehydration data for opening
-              editionId: item.raw_candidate?.editionId,
-              seriesTitle: item.series_title,
-              issueNumber: item.issue_number,
-              publisher: item.publisher,
-              year: item.year,
-              marketImageUrl: item.raw_pricing?.ebay?.imageUrl,
-
-              // Raw fallback
-              raw_candidate: item.raw_candidate,
-              raw_pricing: item.raw_pricing
-            }));
-            setHistory(mapped);
-          }
         }
       } catch (e) {
-        console.warn("[History] Sync failed", e);
+        console.warn("[Init] Handshake failed.", e);
+        // Soft fail: we still allow app usage, but some features might limit
+        setIdentityError("Connection issue");
+        setIdentityStatus("error");
+        // Note: We do NOT return here, we allow history load attempt if we have an old ID? 
+        // If we failed to get ANY ID, we are effectively offline/unauth.
+        if (!id) return;
+      }
+
+      if (id) {
+        setIdentityStatus("ready");
+        // 2. Load History (Background)
+        try {
+          const res = await apiFetch(`/api/saved-scans?installId=${id}&limit=20`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.ok && data.items) {
+              const mapped = data.items.map(item => ({
+                id: item.id,
+                displayName: item.display_name,
+                scanImage: item.scan_thumb_base64 || item.scan_thumb_url,
+                coverUrl: item.cover_url,
+                value: item.raw_pricing?.value || null,
+                timestamp: new Date(item.created_at).getTime(),
+                editionId: item.raw_candidate?.editionId,
+                seriesTitle: item.series_title,
+                issueNumber: item.issue_number,
+                publisher: item.publisher,
+                year: item.year,
+                marketImageUrl: item.raw_pricing?.ebay?.imageUrl,
+                raw_candidate: item.raw_candidate,
+                raw_pricing: item.raw_pricing
+              }));
+              setHistory(mapped);
+            }
+          }
+        } catch (e) {
+          console.warn("[History] Sync failed", e);
+        }
       }
     };
     initAndLoad();
-  }, [state]); // Reload when state changes (e.g. after save)
+  }, [state]);
+
+  // CS-311: Watch for Pending Capture + Identity Ready
+  useEffect(() => {
+    if (identityStatus === "ready" && pendingCapture) {
+      console.log("CS-311: Processing queued capture now that identity is ready.");
+      // Trigger identification
+      const image = pendingCapture;
+      setPendingCapture(null); // Clear queue
+      performIdentification(image);
+    }
+  }, [identityStatus, pendingCapture]);
 
   // -------------------------
   // Core flow helpers (CS-301)
@@ -208,28 +233,34 @@ export function useScanFlow() {
     }
   }, []);
 
-  const captureImage = useCallback(
-    (base64Image) => {
-      const now = Date.now();
-      if (captureLockRef.current) return;
-      if (now - lastCaptureTsRef.current < 650) return;
+  (base64Image) => {
+    const now = Date.now();
+    if (captureLockRef.current) return;
+    if (now - lastCaptureTsRef.current < 650) return;
 
-      captureLockRef.current = true;
-      lastCaptureTsRef.current = now;
+    captureLockRef.current = true;
+    lastCaptureTsRef.current = now;
 
-      console.log("captureImage: triggered");
-      clearError();
+    console.log("captureImage: triggered");
+    clearError();
 
-      setCapturedImage(base64Image);
+    setCapturedImage(base64Image);
+    // CS-311: Queue if identity not ready
+    if (identityStatus !== "ready") {
+      console.log("Identity not ready, queuing capture...");
+      setPendingCapture(base64Image);
+      setState(SCAN_STATE.IDENTIFYING); // Show loading UI immediately
+      // The useEffect will pick this up when status -> ready
+    } else {
       setState(SCAN_STATE.IDENTIFYING);
-
       performIdentification(base64Image);
+    }
 
-      setTimeout(() => {
-        captureLockRef.current = false;
-      }, 400);
-    },
-    [clearError, performIdentification]
+    setTimeout(() => {
+      captureLockRef.current = false;
+    }, 400);
+  },
+    [clearError, performIdentification, identityStatus]
   );
 
   // -------------------------
@@ -426,6 +457,7 @@ export function useScanFlow() {
     pricingResult,
     quotaStatus,
     history,
+    identityStatus, // CS-310
     actions: {
       startCamera,
       captureImage,
