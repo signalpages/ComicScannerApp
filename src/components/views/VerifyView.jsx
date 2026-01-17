@@ -2,7 +2,7 @@
 import React from 'react';
 import CoverImage from '../CoverImage';
 
-const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
+const VerifyView = ({ image, candidates, onSelect, onRetake, onManualSearch }) => {
     // If no scan image is provided, we are in manual lookup mode
     const isManual = !image;
     const logoFallback = isManual ? "/placeholder-cover.png" : null;
@@ -11,9 +11,9 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
         <div className="h-full flex flex-col bg-midnight-950 p-4">
             <h2 className="text-xl font-bold text-white mb-4 text-center">Verify Match</h2>
 
-            {/* Captured Image Preview */}
-            <div className="flex justify-center mb-6">
-                <div className="w-32 h-48 border-2 border-neon-blue rounded-lg overflow-hidden relative shadow-neon bg-black">
+            {/* CS-011: Reduce gaps (mb-6 -> mb-4) and move down slightly if needed */}
+            <div className="flex justify-center mb-4 mt-2">
+                <div className="w-28 h-40 border-2 border-neon-blue rounded-lg overflow-hidden relative shadow-neon bg-black">
                     <CoverImage
                         src={image}
                         fallbackSrc={logoFallback}
@@ -21,7 +21,7 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                         className="w-full h-full object-cover"
                         alt="Scan"
                     />
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-center text-white py-1">YOUR SCAN</div>
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 text-[10px] text-center text-white py-0.5">YOUR SCAN</div>
                 </div>
             </div>
 
@@ -36,14 +36,14 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                             className="flex items-center gap-4 p-3 bg-white/5 border border-white/10 rounded-xl active:bg-white/10"
                         >
                             <div className="w-16 h-24 rounded bg-gray-800 overflow-hidden flex-shrink-0">
-                              <CoverImage
-                                  src={cand.coverUrl || cand.marketImageUrl || image}
-                                  fallbackSrc={logoFallback}
-                                  size="sm"
-                                  className="w-full h-full object-cover"
-                                  alt="Cover"
-                              />
-                              </div>
+                                <CoverImage
+                                    src={cand.coverUrl || cand.marketImageUrl || image}
+                                    fallbackSrc={logoFallback}
+                                    size="sm"
+                                    className="w-full h-full object-cover"
+                                    alt="Cover"
+                                />
+                            </div>
                             <div className="flex-1">
                                 <h4 className="font-bold text-white leading-tight">{cand.displayName}</h4>
                                 <p className="text-xs text-gray-400 mt-1">{cand.variantHint || 'Standard Cover'}</p>
@@ -57,13 +57,29 @@ const VerifyView = ({ image, candidates, onSelect, onRetake }) => {
                 </div>
             ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-                    <p className="mb-4">No matches found.</p>
+                    <p className="mb-4 text-white font-bold">No matches found.</p>
+                    {/* CS-012: Empty State Actions */}
+                    <button
+                        onClick={onManualSearch}
+                        className="w-full py-4 bg-white/10 text-white font-bold rounded-xl border border-white/10 mb-3 active:bg-white/20"
+                    >
+                        Try Manual Lookup
+                    </button>
+                    <button
+                        onClick={onRetake}
+                        className="w-full py-4 bg-transparent text-gray-400 font-bold rounded-xl border border-white/5 active:bg-white/5"
+                    >
+                        Rescan
+                    </button>
                 </div>
             )}
 
-            <button onClick={onRetake} className="mt-2 py-3 text-gray-400 text-sm font-bold">
-                None of these? Retake
-            </button>
+            {/* Hide bottom retake if we are showing the empty state buttons (redundant) */}
+            {candidates && candidates.length > 0 && (
+                <button onClick={onRetake} className="mt-2 py-3 text-gray-400 text-sm font-bold">
+                    None of these? Retake
+                </button>
+            )}
         </div>
     );
 };

@@ -112,6 +112,7 @@ function App() {
             candidates={candidates}
             onSelect={actions.confirmCandidate}
             onRetake={actions.startCamera}
+            onManualSearch={actions.startManualSearch}
           />
         );
 
@@ -218,8 +219,8 @@ function App() {
       case SCAN_STATE.HOME:
       default:
         return (
-          <div className="h-full flex flex-col bg-midnight-950 p-6 overflow-y-auto">
-            <header className="mt-8 mb-12 relative text-center">
+          <div className="h-full flex flex-col bg-midnight-950 p-6 overflow-y-auto pt-[env(safe-area-inset-top)]">
+            <header className="mt-4 mb-8 relative text-center">
               <button
                 onClick={actions.openSettings}
                 className="absolute right-0 top-0 p-2 text-2xl opacity-50 hover:opacity-100 active:scale-90 transition-all"

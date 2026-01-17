@@ -54,10 +54,15 @@ export async function POST(req) {
     const quota = await enforceMonthlyQuota(anonRes.anon);
     if (!quota.ok) {
         console.log(`[QUOTA EXCEEDED] ${anonRes.anon}`);
-        // Soft failure: Return 200 OK with NO_MATCH/QUOTA code so client falls back to manual search
+        // Soft failure: Return 200 OK with SCAN_LIMIT_REACHED code so client shows Paywall
         return Response.json({
-            ok: true,
-            code: "QUOTA_EXCEEDED",
+            ok: false,
+            code: "SCAN_LIMIT_REACHED",
+            error: "Monthly limit reached",
+            used: quota.used,
+            limit: quota.limit,
+            remaining: quota.remaining,
+            plan: "free", // Implicitly free plan
             candidates: []
         }, { status: 200 });
     }
