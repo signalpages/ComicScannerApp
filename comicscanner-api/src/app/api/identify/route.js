@@ -53,7 +53,15 @@ export async function POST(req) {
 
     // 4. Quota Check (Only on Cache Miss)
     const quota = await enforceMonthlyQuota(anonRes.anon);
-    if (!quota.ok) return Response.json(quota.body, { status: quota.status });
+    if (!quota.ok) {
+        console.log(`[QUOTA EXCEEDED] ${anonRes.anon}`);
+        // Soft failure: Return 200 OK with NO_MATCH/QUOTA code so client falls back to manual search
+        return Response.json({
+            ok: true,
+            code: "QUOTA_EXCEEDED",
+            candidates: []
+        }, { status: 200 });
+    }
 
     // 5. Vision Identification
     try {
