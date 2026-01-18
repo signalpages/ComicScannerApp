@@ -110,17 +110,15 @@ export async function POST(req) {
     await supabaseAdmin
         .from('entitlements')
         .insert({ install_id: installId })
-        .select() // fake select to execute
-        .maybeSingle() // Ignore conflict error implicitly or we can be explicit if we use upsert
-        .catch(() => { });
+        .select()
+        .maybeSingle();
 
     // Ensure Usage Row
     await supabaseAdmin
         .from('usage_monthly')
         .insert({ install_id: installId, yyyymm: currentMonth })
         .select()
-        .maybeSingle()
-        .catch(() => { });
+        .maybeSingle();
 
     // 5. Fetch State
     const [entitlementRes, usageRes] = await Promise.all([
