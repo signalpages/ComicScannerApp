@@ -109,5 +109,22 @@ export const apiFetch = async (url, options = {}) => {
     throw new Error("Service temporarily unavailable. Please try again.");
   }
 
+  // --------------------------------------------------------
+  // ✅ Safe JSON Wrapper (CS-Patch: Prevent "<!doctype" errors)
+  // --------------------------------------------------------
+  const originalJson = response.json.bind(response);
+  response.json = async () => {
+    try {
+      return await originalJson();
+    } catch (e) {
+      if (isNative) {
+        // Log the text for debugging
+        const text = await response.clone().text().catch(() => "unreadable");
+        console.error(`[API JSON PARSE ERROR] URL: ${response.url} \nBody: ${text.slice(0, 500)}`);
+      }
+      throw new Error("Server returned invalid data. Please try again.");
+    }
+  };
+
   return response;
 };
