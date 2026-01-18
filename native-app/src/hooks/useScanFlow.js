@@ -34,7 +34,8 @@ export function useScanFlow() {
 
   // CS-311: Queued Scan
   // If user captures before identity is ready, we store base64 here
-  const [pendingCapture, setPendingCapture] = useState(null);
+  const [identityStatus, setIdentityStatus] = useState("loading");
+  const [identityError, setIdentityError] = useState(null);
 
   const inFlight = useRef(false);
 
@@ -122,375 +123,360 @@ export function useScanFlow() {
         }
       }
     };
-  };
 
-  // CS-602: Run once only
-  if (!didInitRef.current) {
-    didInitRef.current = true;
-    initAndLoad();
-  }
-}, []); // CS-504: Run once on mount
 
-// CS-311: Watch for Pending Capture + Identity Ready
-useEffect(() => {
-  if (identityStatus === "ready" && pendingCapture) {
-    console.log("CS-311: Processing queued capture now that identity is ready.");
-    // Trigger identification
-    const image = pendingCapture;
-    setPendingCapture(null); // Clear queue
-    performIdentification(image);
-  }
-}, [identityStatus, pendingCapture]);
-
-// -------------------------
-// Core flow helpers (CS-301)
-// -------------------------
-const resetFlow = useCallback(() => {
-  // 1. Force Clean State
-  setError(null);
-  setCapturedImage(null);
-  setCandidates([]);
-  setSelectedCandidate(null);
-  setPricingResult(null);
-  setQuotaStatus(null);
-  inFlight.current = false;
-  captureLockRef.current = false;
-  lastCaptureTsRef.current = 0;
-
-  // 2. Navigation Safety
-  // Ensure we are truly aiming for HOME
-  setState(SCAN_STATE.HOME);
-}, []);
-
-const openSettings = useCallback(() => {
-  setState(SCAN_STATE.SETTINGS);
-}, []);
-
-const clearError = useCallback(() => setError(null), []);
-
-const startCamera = useCallback(() => {
-  clearError();
-  setState(SCAN_STATE.CAMERA);
-}, [clearError]);
-
-// CS-301: Added missing history actions
-const clearHistory = useCallback(async () => {
-  setHistory([]);
-  // TODO: Could call API DELETE endpoint if implemented
-}, []);
-
-const deleteHistoryItem = useCallback((id) => {
-  setHistory(prev => prev.filter(i => i.id !== id));
-  // TODO: call API DELETE /saved-scans/:id
-}, []);
-
-// -------------------------
-// Identification → Candidates
-// -------------------------
-const performIdentification = useCallback(async (image) => {
-  console.log("performIdentification: calling API with image length", image?.length);
-
-  if (inFlight.current) {
-    console.log("performIdentification: skipped (inFlight)");
-    return;
-  }
-
-  inFlight.current = true;
-  setError(null);
-
-  try {
-    // CS-601: 15s Timeout
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 15000);
-
-    const resp = await apiFetch("/api/identify", {
-      method: "POST",
-      body: { image },
-      signal: controller.signal
-    });
-    clearTimeout(id);
-
-    // Special handling for Quota Limit (429)
-    if (resp.status === 429) {
-      const quotaData = await resp.json();
-      setQuotaStatus(quotaData);
-      setState(SCAN_STATE.LIMIT);
-      // Do NOT throw error
-      return;
+    // CS-602: Run once only
+    if (!didInitRef.current) {
+      didInitRef.current = true;
+      initAndLoad();
     }
+  }, []); // CS-504: Run once on mount
 
-    const data = await resp.json();
-    console.log("performIdentification: candidates received", data.candidates?.length);
+  // CS-311: Watch for Pending Capture + Identity Ready
+  // CS-301: Removed pendingCapture logic. Capture is now immediate.
 
-    // Handle custom error code if 200/400 but logical limit
-    if (data?.error === "LIMIT_REACHED" || data?.code === "SCAN_LIMIT_REACHED") {
-      setQuotaStatus(data);
-      setState(SCAN_STATE.LIMIT);
-      return;
-    }
-
-    if (!data?.ok) {
-      throw new Error(data?.error || "Identification failed");
-    }
-
-    setCandidates(data.candidates || []);
+  // -------------------------
+  // Core flow helpers (CS-301)
+  // -------------------------
+  const resetFlow = useCallback(() => {
+    // 1. Force Clean State
+    setError(null);
+    setCapturedImage(null);
+    setCandidates([]);
     setSelectedCandidate(null);
     setPricingResult(null);
-    setState(SCAN_STATE.VERIFY);
-  } catch (e) {
-    console.error("performIdentification error", e);
-    setError(e?.message || "Identification failed. Please try again.");
-    setState(SCAN_STATE.HOME);
-  } finally {
+    setQuotaStatus(null);
     inFlight.current = false;
-  }
-}, []);
+    captureLockRef.current = false;
+    lastCaptureTsRef.current = 0;
 
-const captureImage = useCallback(
-  (base64Image) => {
-    const now = Date.now();
-    if (captureLockRef.current) return;
-    if (now - lastCaptureTsRef.current < 650) return;
+    // 2. Navigation Safety
+    // Ensure we are truly aiming for HOME
+    setState(SCAN_STATE.HOME);
+  }, []);
 
-    captureLockRef.current = true;
-    lastCaptureTsRef.current = now;
+  const openSettings = useCallback(() => {
+    setState(SCAN_STATE.SETTINGS);
+  }, []);
 
-    console.log("captureImage: triggered");
+  const clearError = useCallback(() => setError(null), []);
+
+  const startCamera = useCallback(() => {
     clearError();
+    setState(SCAN_STATE.CAMERA);
+  }, [clearError]);
 
-    setCapturedImage(base64Image);
-    // CS-311: Queue if identity not ready
-    if (identityStatus !== "ready") {
-      console.log("Identity not ready, queuing capture...");
-      setPendingCapture(base64Image);
-      setState(SCAN_STATE.IDENTIFYING); // Show loading UI immediately
-      // The useEffect will pick this up when status -> ready
-    } else {
-      setState(SCAN_STATE.IDENTIFYING);
-      performIdentification(base64Image);
+  // CS-301: Added missing history actions
+  const clearHistory = useCallback(async () => {
+    setHistory([]);
+    // TODO: Could call API DELETE endpoint if implemented
+  }, []);
+
+  const deleteHistoryItem = useCallback((id) => {
+    setHistory(prev => prev.filter(i => i.id !== id));
+    // TODO: call API DELETE /saved-scans/:id
+  }, []);
+
+  // -------------------------
+  // Identification → Candidates
+  // -------------------------
+  const performIdentification = useCallback(async (image) => {
+    console.log("performIdentification: calling API with image length", image?.length);
+
+    if (inFlight.current) {
+      console.log("performIdentification: skipped (inFlight)");
+      return;
     }
 
-    setTimeout(() => {
-      captureLockRef.current = false;
-    }, 400);
-  },
-  [clearError, performIdentification, identityStatus]
-);
-
-// -------------------------
-// Candidate → Pricing (Cloud Sync)
-// -------------------------
-const confirmCandidate = useCallback(
-  async (candidate) => {
-    if (!candidate) return;
+    inFlight.current = true;
     setError(null);
 
-    const seriesTitle = candidate.seriesTitle || candidate.displayName || "";
-    const issueNumber = candidate.issueNumber || "";
-    const editionId = candidate.editionId;
-    const year = candidate.year || null;
+    try {
+      // CS-601: 15s Timeout
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 15000);
 
-    // 1. Immediate UI Transition
-    setSelectedCandidate(candidate);
-    setPricingResult(null);
-    setState(SCAN_STATE.RESULT);
-
-    // 2. Prepare Snapshot Data (CS-303 Stable ID)
-    // Use editionId + timestamp to ensure uniqueness per scan event, but stable for list
-    const snapshotId = `${editionId}:${Date.now()}`;
-
-    const snapshot = {
-      id: snapshotId,
-      displayName: candidate.displayName,
-      scanImage: capturedImage,
-      coverUrl: candidate.coverUrl,
-      seriesTitle, issueNumber, year, publisher: candidate.publisher,
-      value: null,
-      timestamp: Date.now()
-    };
-
-    setHistory(prev => [snapshot, ...prev]);
-
-    // 3. Initiate Cloud Save & Pricing Parallel (CS-302)
-    const savePromise = (async () => {
-      // Use ensureInstallId directly (although apiFetch calls it too, 
-      // calling it here ensures we don't start specific logic until ready)
-      // Actually apiFetch handles it, but we need it for the 'body' if we were sending it.
-      // CS-302 says: "DO NOT send installId unless backend truly requires it"
-      // So we remove installId from body.
-
-      // CS-603: Soft-Fail Save (Decoupled)
-      // If identityStatus is not 'ready', we probably can't save to backend
-      // because /api/saved-scans requires it. But we should try if we have an ID.
-      // If apiFetch throws because we have no ID, catch it silently.
-
-      return apiFetch("/api/saved-scans", {
+      const resp = await apiFetch("/api/identify", {
         method: "POST",
-        body: {
-          selectedCandidate: candidate,
-          confidence: 1.0,
-          scanThumb: capturedImage,
-          pricing: null
-        }
-      }).catch(e => console.error("Cloud Save Failed", e));
-    })();
+        body: { image },
+        signal: controller.signal
+      });
+      clearTimeout(id);
 
-    // 4. Background Pricing fetch
-    const pricePromise = apiFetch("/api/price", {
-      method: "POST",
-      body: { seriesTitle, issueNumber, editionId, year },
-    }).then(async (resp) => {
-      // CS-303: Soft Fail Pricing
-      const data = await resp.json();
-
-      // If pricing is available/unavailable (200 OK)
-      if (data.ok) {
-        setPricingResult(data);
-
-        // Update History with Value
-        setHistory(prev => {
-          const copy = [...prev];
-          const idx = copy.findIndex(i => i.id === snapshotId);
-          if (idx !== -1) {
-            copy[idx] = { ...copy[idx], value: data.value }; // Merge value
-          }
-          return copy;
-        });
-      } else {
-        // 200 OK but available: false
-        setPricingResult({ value: { typical: null } });
+      // Special handling for Quota Limit (429)
+      if (resp.status === 429) {
+        const quotaData = await resp.json();
+        setQuotaStatus(quotaData);
+        setState(SCAN_STATE.LIMIT);
+        // Do NOT throw error
+        return;
       }
-    }).catch(err => {
-      // Network fail on pricing - Soft Fail (CS-303)
-      console.warn("[Pricing] Failed softly", err);
-      setPricingResult({ value: { typical: null } });
+
+      const data = await resp.json();
+      console.log("performIdentification: candidates received", data.candidates?.length);
+
+      // Handle custom error code if 200/400 but logical limit
+      if (data?.error === "LIMIT_REACHED" || data?.code === "SCAN_LIMIT_REACHED") {
+        setQuotaStatus(data);
+        setState(SCAN_STATE.LIMIT);
+        return;
+      }
+
+      if (!data?.ok) {
+        throw new Error(data?.error || "Identification failed");
+      }
+
+      setCandidates(data.candidates || []);
+      setSelectedCandidate(null);
+      setPricingResult(null);
+      setState(SCAN_STATE.VERIFY);
+    } catch (e) {
+      console.error("performIdentification error", e);
+      setError(e?.message || "Identification failed. Please try again.");
+      setState(SCAN_STATE.HOME);
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  const captureImage = useCallback(
+    (base64Image) => {
+      const now = Date.now();
+      if (captureLockRef.current) return;
+      if (now - lastCaptureTsRef.current < 650) return;
+
+      captureLockRef.current = true;
+      lastCaptureTsRef.current = now;
+
+      console.log("captureImage: triggered");
+      clearError();
+
+      setCapturedImage(base64Image);
+      // CS-301: Immediate Execution (No blocking)
+      setState(SCAN_STATE.IDENTIFYING);
+      performIdentification(base64Image);
+
+      setTimeout(() => {
+        captureLockRef.current = false;
+      }, 400);
+    },
+    [clearError, performIdentification, identityStatus]
+  );
+
+  // -------------------------
+  // Candidate → Pricing (Cloud Sync)
+  // -------------------------
+  const confirmCandidate = useCallback(
+    async (candidate) => {
+      if (!candidate) return;
+      setError(null);
+
+      const seriesTitle = candidate.seriesTitle || candidate.displayName || "";
+      const issueNumber = candidate.issueNumber || "";
+      const editionId = candidate.editionId;
+      const year = candidate.year || null;
+
+      // 1. Immediate UI Transition
+      setSelectedCandidate(candidate);
+      setPricingResult(null);
+      setState(SCAN_STATE.RESULT);
+
+      // 2. Prepare Snapshot Data (CS-303 Stable ID)
+      // Use editionId + timestamp to ensure uniqueness per scan event, but stable for list
+      const snapshotId = `${editionId}:${Date.now()}`;
+
+      const snapshot = {
+        id: snapshotId,
+        displayName: candidate.displayName,
+        scanImage: capturedImage,
+        coverUrl: candidate.coverUrl,
+        seriesTitle, issueNumber, year, publisher: candidate.publisher,
+        value: null,
+        timestamp: Date.now()
+      };
+
+      setHistory(prev => [snapshot, ...prev]);
+
+      // 3. Initiate Cloud Save & Pricing Parallel (CS-302)
+      const savePromise = (async () => {
+        // Use ensureInstallId directly (although apiFetch calls it too, 
+        // calling it here ensures we don't start specific logic until ready)
+        // Actually apiFetch handles it, but we need it for the 'body' if we were sending it.
+        // CS-302 says: "DO NOT send installId unless backend truly requires it"
+        // So we remove installId from body.
+
+        // CS-603: Soft-Fail Save (Decoupled)
+        // If identityStatus is not 'ready', we probably can't save to backend
+        // because /api/saved-scans requires it. But we should try if we have an ID.
+        // If apiFetch throws because we have no ID, catch it silently.
+
+        return apiFetch("/api/saved-scans", {
+          method: "POST",
+          body: {
+            selectedCandidate: candidate,
+            confidence: 1.0,
+            scanThumb: capturedImage,
+            pricing: null
+          }
+        }).catch(e => console.error("Cloud Save Failed", e));
+      })();
+
+      // 4. Background Pricing fetch
+      const pricePromise = apiFetch("/api/price", {
+        method: "POST",
+        body: { seriesTitle, issueNumber, editionId, year },
+      }).then(async (resp) => {
+        // CS-303: Soft Fail Pricing
+        const data = await resp.json();
+
+        // If pricing is available/unavailable (200 OK)
+        if (data.ok) {
+          setPricingResult(data);
+
+          // Update History with Value
+          setHistory(prev => {
+            const copy = [...prev];
+            const idx = copy.findIndex(i => i.id === snapshotId);
+            if (idx !== -1) {
+              copy[idx] = { ...copy[idx], value: data.value }; // Merge value
+            }
+            return copy;
+          });
+        } else {
+          // 200 OK but available: false
+          setPricingResult({ value: { typical: null } });
+        }
+      }).catch(err => {
+        // Network fail on pricing - Soft Fail (CS-303)
+        console.warn("[Pricing] Failed softly", err);
+        setPricingResult({ value: { typical: null } });
+      });
+
+      await Promise.allSettled([savePromise, pricePromise]);
+    },
+    [capturedImage]
+  );
+
+  // -------------------------
+  // Manual flow
+  // -------------------------
+  const startManualSearch = useCallback(() => {
+    resetFlow();
+    setState(SCAN_STATE.MANUAL_SEARCH);
+  }, [resetFlow]);
+
+  const performManualSearch = useCallback(async (title, issue) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setError(null);
+
+    try {
+      const resp = await apiFetch(
+        `/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(issue)}`,
+        { method: "GET" }
+      );
+
+      const data = await resp.json();
+      if (!data?.ok) throw new Error(data?.error || "Search failed");
+
+      setCandidates(data.candidates || []);
+      setSelectedCandidate(null);
+      setPricingResult(null);
+      setState(SCAN_STATE.VERIFY);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Search failed. Please try again.");
+    } finally {
+      inFlight.current = false;
+    }
+  }, []);
+
+  const openHistoryItem = useCallback((item) => {
+    setCapturedImage(item.scanImage || null);
+
+    // CS-303: Fix ResultCard population
+    setSelectedCandidate({
+      editionId: item.editionId,
+      displayName: item.displayName,
+      coverUrl: item.coverUrl ?? null,
+      marketImageUrl: item.marketImageUrl ?? null,
+      year: item.year ?? null,
+      publisher: item.publisher ?? null,
+      seriesTitle: item.seriesTitle,
+      issueNumber: item.issueNumber
     });
 
-    await Promise.allSettled([savePromise, pricePromise]);
-  },
-  [capturedImage]
-);
-
-// -------------------------
-// Manual flow
-// -------------------------
-const startManualSearch = useCallback(() => {
-  resetFlow();
-  setState(SCAN_STATE.MANUAL_SEARCH);
-}, [resetFlow]);
-
-const performManualSearch = useCallback(async (title, issue) => {
-  if (inFlight.current) return;
-  inFlight.current = true;
-  setError(null);
-
-  try {
-    const resp = await apiFetch(
-      `/api/search?title=${encodeURIComponent(title)}&issue=${encodeURIComponent(issue)}`,
-      { method: "GET" }
-    );
-
-    const data = await resp.json();
-    if (!data?.ok) throw new Error(data?.error || "Search failed");
-
-    setCandidates(data.candidates || []);
-    setSelectedCandidate(null);
-    setPricingResult(null);
-    setState(SCAN_STATE.VERIFY);
-  } catch (e) {
-    console.error(e);
-    setError(e?.message || "Search failed. Please try again.");
-  } finally {
-    inFlight.current = false;
-  }
-}, []);
-
-const openHistoryItem = useCallback((item) => {
-  setCapturedImage(item.scanImage || null);
-
-  // CS-303: Fix ResultCard population
-  setSelectedCandidate({
-    editionId: item.editionId,
-    displayName: item.displayName,
-    coverUrl: item.coverUrl ?? null,
-    marketImageUrl: item.marketImageUrl ?? null,
-    year: item.year ?? null,
-    publisher: item.publisher ?? null,
-    seriesTitle: item.seriesTitle,
-    issueNumber: item.issueNumber
-  });
-
-  // Use stored value or null placeholder
-  setPricingResult(item.value ? { value: item.value } : { value: { typical: null } });
-  setState(SCAN_STATE.RESULT);
-}, []);
-
-// CS-063: Rehydratable Routes (Deep Link Support)
-const loadScanById = useCallback(async (id) => {
-  if (!id) return;
-  try {
+    // Use stored value or null placeholder
+    setPricingResult(item.value ? { value: item.value } : { value: { typical: null } });
     setState(SCAN_STATE.RESULT);
+  }, []);
 
-    const res = await apiFetch(`/api/saved-scans/${id}`);
-    if (!res.ok) throw new Error("Scan not found");
-    const json = await res.json();
-    if (!json.item) throw new Error("Invalid scan data");
+  // CS-063: Rehydratable Routes (Deep Link Support)
+  const loadScanById = useCallback(async (id) => {
+    if (!id) return;
+    try {
+      setState(SCAN_STATE.RESULT);
 
-    const item = json.item; // Normalized backend response
+      const res = await apiFetch(`/api/saved-scans/${id}`);
+      if (!res.ok) throw new Error("Scan not found");
+      const json = await res.json();
+      if (!json.item) throw new Error("Invalid scan data");
 
-    const mappedCandidate = {
-      editionId: item.raw_candidate?.editionId,
-      displayName: item.display_name,
-      coverUrl: item.cover_url,
-      seriesTitle: item.series_title,
-      issueNumber: item.issue_number,
-      year: item.year,
-      publisher: item.publisher,
-      marketImageUrl: item.raw_pricing?.ebay?.imageUrl
-    };
+      const item = json.item; // Normalized backend response
 
-    setCapturedImage(item.scan_thumb_base64 || item.scan_thumb_url);
-    setSelectedCandidate(mappedCandidate);
+      const mappedCandidate = {
+        editionId: item.raw_candidate?.editionId,
+        displayName: item.display_name,
+        coverUrl: item.cover_url,
+        seriesTitle: item.series_title,
+        issueNumber: item.issue_number,
+        year: item.year,
+        publisher: item.publisher,
+        marketImageUrl: item.raw_pricing?.ebay?.imageUrl
+      };
 
-    if (item.raw_pricing) {
-      setPricingResult({ ok: true, value: item.raw_pricing.value });
-    } else {
-      setPricingResult({ ok: true, value: { typical: null } });
+      setCapturedImage(item.scan_thumb_base64 || item.scan_thumb_url);
+      setSelectedCandidate(mappedCandidate);
+
+      if (item.raw_pricing) {
+        setPricingResult({ ok: true, value: item.raw_pricing.value });
+      } else {
+        setPricingResult({ ok: true, value: { typical: null } });
+      }
+
+      setState(SCAN_STATE.RESULT);
+
+    } catch (e) {
+      console.error("[DeepLink] Failed to load scan", e);
+      setError("Could not load saved scan.");
+      setState(SCAN_STATE.HOME);
     }
+  }, []);
 
-    setState(SCAN_STATE.RESULT);
-
-  } catch (e) {
-    console.error("[DeepLink] Failed to load scan", e);
-    setError("Could not load saved scan.");
-    setState(SCAN_STATE.HOME);
-  }
-}, []);
-
-return {
-  state,
-  error,
-  capturedImage,
-  candidates,
-  selectedCandidate,
-  pricingResult,
-  quotaStatus,
-  history,
-  identityStatus, // CS-310
-  actions: {
-    startCamera,
-    captureImage,
-    performIdentification,
-    confirmCandidate,
-    startManualSearch,
-    performManualSearch,
-    resetFlow,
-    clearError,
-    openHistoryItem,
-    loadScanById,
-    openSettings,
-    clearHistory, // CS-301
-    deleteHistoryItem // CS-301
-  },
-};
+  return {
+    state,
+    error,
+    capturedImage,
+    candidates,
+    selectedCandidate,
+    pricingResult,
+    quotaStatus,
+    history,
+    identityStatus, // CS-310
+    actions: {
+      startCamera,
+      captureImage,
+      performIdentification,
+      confirmCandidate,
+      startManualSearch,
+      performManualSearch,
+      resetFlow,
+      clearError,
+      openHistoryItem,
+      loadScanById,
+      openSettings,
+      clearHistory, // CS-301
+      deleteHistoryItem // CS-301
+    },
+  };
 }

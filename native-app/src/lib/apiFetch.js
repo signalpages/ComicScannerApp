@@ -1,4 +1,5 @@
 import { getInstallId } from "./installId";
+import { getStableDeviceId } from "./deviceId";
 import { Capacitor } from "@capacitor/core";
 import { API_BASE_URL } from "../config"; // CS-206
 import { IAP } from "../services/iapBridge";
@@ -10,33 +11,34 @@ import { IAP } from "../services/iapBridge";
  * HARDENED: Now forces absolute paths for ALL relative URLs in native.
  */
 export const apiFetch = async (url, options = {}) => {
-  // CS-303: Strict Identity Gating via installId.js
-  const installId = await getInstallId();
+  // CS-301: Remove Identity Gating (Best Effort)
+  // We attempt to get ids, but never block flow if they fail.
 
-  // CS-601: Strict Allowlist for Identity Requirement
-  // Only Personal Data endpoints require Identity
-  const requiresInstallId =
-    url.includes("/api/saved-scans") ||
-    url.includes("/api/usage");
-  // /api/install is self-bootstrapping, doesn't need ID check explicitly here
+  // 1. Device ID (Required-ish, but generated locally so reliable)
+  const deviceId = await getStableDeviceId();
 
-  if (requiresInstallId && !installId) {
-    console.warn("[API] Soft-Blocking request to personal endpoint (No Identity):", url);
-    // We used to throw, now we might just want to return a dummy response or throw simpler?
-    // User says "Scan flow works without backend". 
-    // If we are saving a scan, we should probably soft-fail before calling this, 
-    // but if we call it, blocking is correct as the backend needs it.
-    throw new Error("Identity not ready");
-  }
-
-  const isEntitled = await IAP.isEntitled().catch(() => false);
+  // 2. Install ID (Server Session, optional)
+  // We do NOT block on this. If it returns null, we proceed.
+  const installId = await getInstallId().catch(() => null);
 
   const defaultHeaders = {
     "Content-Type": "application/json",
-    ...(installId ? { "x-install-id": installId } : {}), // Only send if we have it
-    ...(isEntitled ? { "x-entitlement-status": "active" } : {})
+    // CS-206: Versioning
+    "x-app-version": process.env.APP_VERSION || "1.0.0",
+    "x-platform": window.Capacitor?.getPlatform() || "web",
+    // CS-303: Persistent Device Identity
+    "x-device-id": deviceId,
   };
 
+  // Only attach install ID if we have it
+  if (installId) {
+    defaultHeaders["x-install-id"] = installId;
+  }
+
+  // NOTE: We REMOVED the "requiresInstallId" check. 
+  // We NEVER throw "Identity not ready" anymore.
+  // Backend endpoints for saved-scans will just fail gracefully (401/400) 
+  // or use x-device-id if supported.
   // --------------------------------------------------------
   // ✅ Native-safe API base resolution (Hardened)
   // --------------------------------------------------------
