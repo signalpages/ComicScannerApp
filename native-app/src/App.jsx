@@ -281,27 +281,11 @@ function App() {
                 </div>
                 <div className="space-y-3">
                   {history.map((item) => {
-                    // Long press logic
-                    let pressTimer = null;
-                    const startPress = () => {
-                      pressTimer = setTimeout(() => {
-                        actions.deleteHistoryItem(item.id);
-                      }, 800);
-                    };
-                    const cancelPress = () => {
-                      if (pressTimer) clearTimeout(pressTimer);
-                    };
-
                     return (
                       <div
                         key={item.id} // Stable Key
-                        className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5 active:bg-red-500/10 transition-colors select-none"
+                        className="flex gap-3 p-3 bg-white/5 rounded-xl border border-white/5 active:bg-white/10 transition-colors select-none relative group"
                         onClick={() => actions.openHistoryItem(item)}
-                        onMouseDown={startPress}
-                        onMouseUp={cancelPress}
-                        onMouseLeave={cancelPress}
-                        onTouchStart={startPress}
-                        onTouchEnd={cancelPress}
                       >
                         <div className="w-10 h-14 flex-shrink-0">
                           <CoverImage
@@ -312,7 +296,7 @@ function App() {
                             alt="cover"
                           />
                         </div>
-                        <div>
+                        <div className="flex-1 min-w-0">
                           <p className="text-white font-bold text-sm line-clamp-1">{item.displayName}</p>
                           <p className="text-neon-blue text-xs font-mono">
                             {typeof item.value?.typical === 'number'
@@ -320,6 +304,19 @@ function App() {
                               : ''}
                           </p>
                         </div>
+
+                        {/* CS-503: Explicit Delete Button */}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm("Delete this scan?")) {
+                              actions.deleteHistoryItem(item.id);
+                            }
+                          }}
+                          className="w-10 h-full absolute right-0 top-0 flex items-center justify-center text-gray-600 hover:text-red-400 active:scale-95 px-2"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     );
                   })}

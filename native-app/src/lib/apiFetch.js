@@ -13,12 +13,14 @@ export const apiFetch = async (url, options = {}) => {
   // CS-303: Strict Identity Gating via installId.js
   const installId = await getInstallId();
 
-  if (!installId && !url.includes("/api/install") && !url.includes("/api/search")) {
-    // Determine if this is a critical block or if we auto-init?
-    // User Guide says: "Update apiFetch to always send x-install-id".
-    // If it's missing, we probably should block or fail, but /api/install itself must pass.
-    // CS-310: Manual Search is allowed without ID status
-    console.error("[API] Blocked: No Install ID (and not /api/install or /api/search)");
+  // CS-501: Strict Allowlist for Identity Requirement
+  const requiresInstallId =
+    url.includes("/api/saved-scans") ||
+    url.includes("/api/usage") ||
+    url.includes("/api/install"); // /api/install handles its own missing ID logic usually, but we list it for clarity
+
+  if (requiresInstallId && !installId && !url.includes("/api/install")) {
+    console.error("[API] Blocked: No Install ID for protected route");
     throw new Error("Initializing app identity...");
   }
 
@@ -26,7 +28,7 @@ export const apiFetch = async (url, options = {}) => {
 
   const defaultHeaders = {
     "Content-Type": "application/json",
-    "x-install-id": installId, // Always strictly valid
+    ...(installId ? { "x-install-id": installId } : {}), // Only send if we have it
     ...(isEntitled ? { "x-entitlement-status": "active" } : {})
   };
 
