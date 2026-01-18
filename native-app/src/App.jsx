@@ -12,7 +12,7 @@ import { useScanFlow, SCAN_STATE } from "./hooks/useScanFlow";
 import { formatCurrency } from "./utils/currency";
 
 import { IAP } from "./services/iapBridge";
-import { getDeviceId, initializeDeviceId } from "./lib/deviceId";
+import { getStableDeviceId } from "./lib/deviceId";
 import { App as CapacitorApp } from '@capacitor/app';
 import PaywallView from "./components/views/PaywallView";
 
@@ -54,11 +54,11 @@ function App() {
   }, []);
 
   // CS-029 & CS-030 Initializer
-  const [deviceId, setDeviceId] = useState(getDeviceId());
+  const [deviceId, setDeviceId] = useState(null);
 
   useEffect(() => {
-    // 1. Initialize Persistent ID
-    initializeDeviceId().then(id => setDeviceId(id));
+    // 1. Initialize Persistent ID (For debug display mainly)
+    getStableDeviceId().then(id => setDeviceId(id));
 
     // 2. Check Entitlements (CS-030)
     // For now, we just ensure IAP bridge is ready. 

@@ -1,7 +1,13 @@
-import React from "react";
-import { getDeviceId } from "../../lib/deviceId";
+import React, { useEffect, useState } from "react";
+import { getStableDeviceId } from "../../lib/deviceId";
 
 const SettingsView = ({ onBack, onCopyId }) => {
+    const [deviceId, setDeviceId] = useState("Loading...");
+
+    useEffect(() => {
+        getStableDeviceId().then(setDeviceId).catch(() => setDeviceId("Unavailable"));
+    }, []);
+
     return (
         <div className="min-h-full bg-midnight-950 text-white flex flex-col p-6 animate-fade-in pb-20">
             <header className="flex items-center mb-8 gap-4">
@@ -21,7 +27,7 @@ const SettingsView = ({ onBack, onCopyId }) => {
                         <img src="/pwa-192x192.png" alt="Logo" className="w-16 h-16 rounded-xl shadow-lg" />
                         <div>
                             <h2 className="text-xl font-bold tracking-tight">ComicScan</h2>
-                            <p className="text-sm text-gray-400">Version 1.0.0</p>
+                            <p className="text-sm text-gray-400">Version {process.env.APP_VERSION || "Dev"}</p>
                         </div>
                     </div>
                     <p className="text-xs text-gray-500">
@@ -33,7 +39,7 @@ const SettingsView = ({ onBack, onCopyId }) => {
                 <section>
                     <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">Support</h3>
                     <a
-                        href={`mailto:support@appkrewe.com?subject=ComicScan Support (Device: ${getDeviceId()})`}
+                        href={`mailto:support@appkrewe.com?subject=ComicScan Support (Device: ${deviceId})`}
                         className="block w-full p-4 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 active:scale-[0.98] transition-all"
                     >
                         <div className="flex justify-between items-center">
@@ -92,7 +98,7 @@ const SettingsView = ({ onBack, onCopyId }) => {
                     onClick={onCopyId}
                     className="inline-block px-4 py-2 bg-white/5 rounded-full border border-white/5 cursor-pointer active:scale-95 transition-transform"
                 >
-                    <code className="text-[10px] text-gray-500 font-mono tracking-wider">{getDeviceId()}</code>
+                    <code className="text-[10px] text-gray-500 font-mono tracking-wider">{deviceId}</code>
                 </div>
                 <p className="text-[10px] text-gray-600 mt-2 max-w-xs mx-auto">
                     CS-031: ID resets if app data is cleared.

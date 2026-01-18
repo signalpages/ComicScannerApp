@@ -32,10 +32,7 @@ export function useScanFlow() {
   const [identityStatus, setIdentityStatus] = useState("loading");
   const [identityError, setIdentityError] = useState(null);
 
-  // CS-311: Queued Scan
-  // If user captures before identity is ready, we store base64 here
-  const [identityStatus, setIdentityStatus] = useState("loading");
-  const [identityError, setIdentityError] = useState(null);
+
 
   const inFlight = useRef(false);
 
