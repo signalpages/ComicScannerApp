@@ -13,15 +13,20 @@ export const apiFetch = async (url, options = {}) => {
   // CS-303: Strict Identity Gating via installId.js
   const installId = await getInstallId();
 
-  // CS-501: Strict Allowlist for Identity Requirement
+  // CS-601: Strict Allowlist for Identity Requirement
+  // Only Personal Data endpoints require Identity
   const requiresInstallId =
     url.includes("/api/saved-scans") ||
-    url.includes("/api/usage") ||
-    url.includes("/api/install"); // /api/install handles its own missing ID logic usually, but we list it for clarity
+    url.includes("/api/usage");
+  // /api/install is self-bootstrapping, doesn't need ID check explicitly here
 
-  if (requiresInstallId && !installId && !url.includes("/api/install")) {
-    console.error("[API] Blocked: No Install ID for protected route");
-    throw new Error("Initializing app identity...");
+  if (requiresInstallId && !installId) {
+    console.warn("[API] Soft-Blocking request to personal endpoint (No Identity):", url);
+    // We used to throw, now we might just want to return a dummy response or throw simpler?
+    // User says "Scan flow works without backend". 
+    // If we are saving a scan, we should probably soft-fail before calling this, 
+    // but if we call it, blocking is correct as the backend needs it.
+    throw new Error("Identity not ready");
   }
 
   const isEntitled = await IAP.isEntitled().catch(() => false);

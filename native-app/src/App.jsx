@@ -247,7 +247,7 @@ function App() {
                 <p className="text-xs text-neon-blue/50 animate-pulse font-mono mb-1">CONNECTING...</p>
               )}
               {identityStatus === "error" && (
-                <p className="text-xs text-red-400 font-mono mb-1">OFFLINE MODE</p>
+                <p className="text-xs text-gray-500 font-mono mb-1">History syncing unavailable</p>
               )}
               <p className="text-blue-200/70 text-sm">Scan any comic to instantly see what it's worth!</p>
             </header>

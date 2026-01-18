@@ -31,7 +31,10 @@ export async function requireAnonId(req) {
     const anon = req.headers.get("x-anon-id")?.trim();
     if (anon) return { ok: true, anon, type: 'legacy' };
 
-    return { ok: false, status: 400, body: { ok: false, code: "MISSING_ID", error: "Missing installId" } };
+    // CS-604: Backend Contract - Do not block verify/price if ID missing
+    // We return a "Zero UUID" which effectively bypasses strict quota (fails open on DB FK)
+    // allowing the scan to proceed.
+    return { ok: true, anon: "00000000-0000-0000-0000-000000000000", type: 'fallback' };
 }
 
 // SS-006: Key Migration - Now using Supabase 'usage_monthly'
